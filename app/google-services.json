@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "62504979904",
+    "project_id": "fypapp-c165f",
+    "storage_bucket": "fypapp-c165f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:62504979904:android:af9c59dd9e9aa905b5cc25",
+        "android_client_info": {
+          "package_name": "com.example.therapy_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBy9blZ91WcZFOD61Xx-_4Urwi13u59TMs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
