@@ -33,7 +33,7 @@
         android:hint="Password"
         android:inputType="textPassword"
         android:textColorHint="@color/white"
-
+        android:textColor="@color/white"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
@@ -64,6 +64,5 @@
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/loginButton" />
-
 
 </androidx.constraintlayout.widget.ConstraintLayout>
