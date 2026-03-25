@@ -1,13 +1,19 @@
 [versions]
-kotlin = "1.9.22"
-androidGradlePlugin = "8.13.2"
+kotlin = "2.2.10"
+androidGradlePlugin = "9.1.0"
 googleServicesPlugin = "4.4.2"
+
+# Compose
 composeBom = "2024.04.01"
+
+# AndroidX
 coreKtx = "1.12.0"
 lifecycleRuntimeKtx = "2.7.0"
 activityCompose = "1.8.2"
 appcompat = "1.6.1"
 material = "1.11.0"
+
+# Testing
 junit = "4.13.2"
 androidxJunit = "1.1.5"
 espressoCore = "3.5.1"
@@ -39,4 +45,4 @@ androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-co
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServicesPlugin" }
-
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
