@@ -1,10 +1,12 @@
 package com.example.therapy_app
 
 import android.os.Bundle
+import android.view.MenuItem
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.appbar.MaterialToolbar
 import com.google.firebase.auth.FirebaseAuth
 
 class RegisterActivity : AppCompatActivity() {
@@ -15,7 +17,11 @@ class RegisterActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_register)
 
-        // Enable top-left back arrow
+        // Set up toolbar as ActionBar
+        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
+        setSupportActionBar(toolbar)
+
+        // Enable native back arrow
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "Register"
 
@@ -54,14 +60,12 @@ class RegisterActivity : AppCompatActivity() {
             }
     }
 
-    // Handle top-left back arrow click
-    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
-        return when (item.itemId) {
-            android.R.id.home -> {
-                finish() // Closes this activity and returns to login
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
+    // Handle toolbar back arrow
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == android.R.id.home) {
+            finish()
+            return true
         }
+        return super.onOptionsItemSelected(item)
     }
 }

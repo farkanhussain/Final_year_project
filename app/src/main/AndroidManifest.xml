@@ -11,9 +11,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Therapy_app">
 
-        <!-- LoginActivity opens first -->
+        <!-- SplashActivity opens first -->
         <activity
-            android:name=".LoginActivity"
+            android:name=".SplashActivity"
             android:exported="true">
 
             <intent-filter>
@@ -22,6 +22,11 @@
             </intent-filter>
 
         </activity>
+
+        <!-- Login screen -->
+        <activity
+            android:name=".LoginActivity"
+            android:exported="true" />
 
         <!-- Main screen -->
         <activity
