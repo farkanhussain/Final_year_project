@@ -35,6 +35,10 @@
 
         <activity android:name=".RegisterActivity" />
 
+        <activity android:name=".MFAEnrollmentActivity"/>
+
+        <activity android:name=".MfaSignInActivity"/>
+
     </application>
 
 </manifest>

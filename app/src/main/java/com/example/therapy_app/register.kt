@@ -1,5 +1,6 @@
 package com.example.therapy_app
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.MenuItem
 import android.widget.Button
@@ -17,11 +18,9 @@ class RegisterActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_register)
 
-        // Set up toolbar as ActionBar
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
 
-        // Enable native back arrow
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "Register"
 
@@ -54,13 +53,22 @@ class RegisterActivity : AppCompatActivity() {
             .addOnCompleteListener(this) { task ->
                 if (task.isSuccessful) {
                     Toast.makeText(this, "Registration Successful", Toast.LENGTH_SHORT).show()
+
+                    // 🔥 Redirect to MFA Enrollment Activity
+                    val intent = Intent(this, MFAEnrollmentActivity::class.java)
+                    startActivity(intent)
+                    finish()
+
                 } else {
-                    Toast.makeText(this, "Registration Failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this,
+                        "Registration Failed: ${task.exception?.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
     }
 
-    // Handle toolbar back arrow
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == android.R.id.home) {
             finish()
