@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Therapy_app</string>
+    <string name="Open_Drawer">Open navigation Drawer</string>
+    <string name="Close_Drawer">Close navigation drawer</string>
 </resources>

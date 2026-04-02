@@ -32,12 +32,17 @@
         <activity
             android:name=".MainActivity"
             android:exported="false" />
-
         <activity android:name=".RegisterActivity" />
-
         <activity android:name=".MFAEnrollmentActivity"/>
-
         <activity android:name=".MfaSignInActivity"/>
+        <activity android:name=".ProfileActivity"/>
+        <activity android:name=".SettingsActivity"/>
+        <activity android:name=".TherapyActivity"/>
+        <activity android:name=".MoodTrackingActivity"/>
+        <activity android:name=".JournalingActivity"/>
+        <activity android:name=".ArticlesActivity"/>
+
+
 
     </application>
 

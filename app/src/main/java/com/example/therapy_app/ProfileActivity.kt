@@ -5,25 +5,25 @@ import android.os.Bundle
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.drawerlayout.widget.DrawerLayout
-import com.google.android.material.navigation.NavigationView
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.navigation.NavigationView
 
-class MainActivity : AppCompatActivity() {
+class ProfileActivity : AppCompatActivity() {
 
     private lateinit var drawerLayout: DrawerLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        setContentView(R.layout.activity_profile)
 
-        drawerLayout = findViewById(R.id.drawer_layout)
-        val navView: NavigationView = findViewById(R.id.nav_view)
-        val toolbar: MaterialToolbar = findViewById(R.id.toolbar)
+        drawerLayout = findViewById(R.id.drawer_layout_profile)
+        val navView: NavigationView = findViewById(R.id.nav_view_profile)
+        val toolbar: MaterialToolbar = findViewById(R.id.toolbar_profile)
 
         // Set toolbar as ActionBar
         setSupportActionBar(toolbar)
 
-        // Add burger icon toggle
+        // Enable burger menu toggle
         val toggle = ActionBarDrawerToggle(
             this,
             drawerLayout,
@@ -34,9 +34,6 @@ class MainActivity : AppCompatActivity() {
         drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
 
-        // -----------------------------
-        // HANDLE HEADER CLICK
-        // -----------------------------
         val headerView = navView.getHeaderView(0)
 
         headerView.setOnClickListener {
@@ -44,14 +41,12 @@ class MainActivity : AppCompatActivity() {
             drawerLayout.closeDrawers()
         }
 
-        // -----------------------------
-        // HANDLE MENU ITEM CLICKS
-        // -----------------------------
+        // Handle navigation item clicks
         navView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
 
                 R.id.nav_home -> {
-                    drawerLayout.closeDrawers()
+                    startActivity(Intent(this, MainActivity::class.java))
                 }
 
                 R.id.nav_therapy -> {
@@ -78,3 +73,4 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
+
