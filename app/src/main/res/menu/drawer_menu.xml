@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/nav_home"
+        android:title="Home"
+        android:icon="@drawable/home"/>
+
+    <item
+        android:id="@+id/nav_therapy"
+        android:title="Therapy"
+        android:icon="@drawable/therapy"/>
+
+    <item
+        android:id="@+id/nav_mood_tracking"
+        android:title="Mood tracking"
+        android:icon="@drawable/mood_tracking"/>
+
+    <item
+        android:id="@+id/nav_journaling"
+        android:title="Journaling"
+        android:icon="@drawable/journaling"/>
+
+    <item
+        android:id="@+id/nav_articles"
+        android:title="View articles"
+        android:icon="@drawable/articles"/>
+
+    <item
+        android:id="@+id/nav_settings"
+        android:title="Settings"
+        android:icon="@drawable/settings"/>
+
+</menu>
