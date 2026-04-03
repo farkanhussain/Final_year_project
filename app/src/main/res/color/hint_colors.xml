@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- When focused (floating label while typing) -->
+    <item android:color="@color/grey" android:state_focused="true"/>
+
+    <!-- Default (floating label when not focused) -->
+    <item android:color="@color/white"/>
+
+</selector>

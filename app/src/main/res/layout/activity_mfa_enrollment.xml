@@ -1,4 +1,6 @@
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:padding="24dp"
     android:background="@color/beige"
@@ -16,14 +18,15 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Phone Number Field -->
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/phoneLayout"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="32dp"
         app:boxBackgroundMode="filled"
-        app:boxBackgroundColor="@color/red"
-        app:hintTextColor="@color/white"
+        app:boxBackgroundColor="@color/red_dark"
+        app:hintTextColor="@color/hint_colors"
         app:boxStrokeColor="@color/white"
         app:layout_constraintTop_toBottomOf="@id/toolbar"
         app:layout_constraintStart_toStartOf="parent"
@@ -35,9 +38,11 @@
             android:layout_height="wrap_content"
             android:hint="Phone Number (+44...)"
             android:textColor="@color/white"
-            android:textColorHint="@color/white"/>
+            android:textColorHint="@color/white"
+            android:textCursorDrawable="@null"/>
     </com.google.android.material.textfield.TextInputLayout>
 
+    <!-- Send Code Button -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/sendCodeButton"
         android:layout_width="0dp"
@@ -45,20 +50,22 @@
         android:layout_marginTop="24dp"
         android:text="Send Verification Code"
         android:backgroundTint="@color/green"
+        app:rippleColor="@color/light_green"
         android:textColor="@color/white"
         app:cornerRadius="12dp"
         app:layout_constraintTop_toBottomOf="@id/phoneLayout"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
+    <!-- Verification Code Field -->
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/codeLayout"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
         app:boxBackgroundMode="filled"
-        app:boxBackgroundColor="@color/red"
-        app:hintTextColor="@color/white"
+        app:boxBackgroundColor="@color/red_dark"
+        app:hintTextColor="@color/hint_colors"
         app:boxStrokeColor="@color/white"
         app:layout_constraintTop_toBottomOf="@id/sendCodeButton"
         app:layout_constraintStart_toStartOf="parent"
@@ -70,9 +77,11 @@
             android:layout_height="wrap_content"
             android:hint="Verification Code"
             android:textColor="@color/white"
-            android:textColorHint="@color/white"/>
+            android:textColorHint="@color/white"
+            android:textCursorDrawable="@null"/>
     </com.google.android.material.textfield.TextInputLayout>
 
+    <!-- Enable 2FA Button -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/verifyButton"
         android:layout_width="0dp"
@@ -80,19 +89,23 @@
         android:layout_marginTop="24dp"
         android:text="Enable 2FA"
         android:backgroundTint="@color/green"
+        app:rippleColor="@color/light_green"
         android:textColor="@color/white"
         app:cornerRadius="12dp"
         app:layout_constraintTop_toBottomOf="@id/codeLayout"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
+    <!-- Skip Button -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/skipButton"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
         android:text="Skip 2FA"
-        android:backgroundTint="@color/red"
+        android:backgroundTint="@color/red_dark"
+        app:rippleColor="@color/red"
+        android:textColor="@color/white"
         app:cornerRadius="12dp"
         app:layout_constraintTop_toBottomOf="@id/verifyButton"
         app:layout_constraintStart_toStartOf="parent"
