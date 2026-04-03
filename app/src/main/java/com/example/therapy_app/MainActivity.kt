@@ -7,6 +7,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.drawerlayout.widget.DrawerLayout
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.firebase.auth.FirebaseAuth
+import android.widget.TextView
 
 class MainActivity : AppCompatActivity() {
 
@@ -34,19 +36,27 @@ class MainActivity : AppCompatActivity() {
         drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
 
-        // -----------------------------
-        // HANDLE HEADER CLICK
-        // -----------------------------
-        val headerView = navView.getHeaderView(0)
+        // ----------------------------------------------------
+        // SET USER EMAIL IN DRAWER HEADER (Firebase)
+        // ----------------------------------------------------
+        val user = FirebaseAuth.getInstance().currentUser
+        val email = user?.email ?: "Unknown"
 
+        val headerView = navView.getHeaderView(0)
+        val emailTextView = headerView.findViewById<TextView>(R.id.header_profile_email)
+        emailTextView.text = email
+
+        // ----------------------------------------------------
+        // HANDLE HEADER CLICK
+        // ----------------------------------------------------
         headerView.setOnClickListener {
             startActivity(Intent(this, ProfileActivity::class.java))
             drawerLayout.closeDrawers()
         }
 
-        // -----------------------------
+        // ----------------------------------------------------
         // HANDLE MENU ITEM CLICKS
-        // -----------------------------
+        // ----------------------------------------------------
         navView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
 

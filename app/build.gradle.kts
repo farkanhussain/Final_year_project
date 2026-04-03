@@ -77,6 +77,7 @@ dependencies {
     implementation("com.google.firebase:firebase-auth-ktx:22.3.1")
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.android.gms:play-services-auth:20.7.0")
+    implementation(libs.filament.android)
 
     // Testing
     testImplementation("junit:junit:4.13.2")
@@ -89,4 +90,5 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 }
