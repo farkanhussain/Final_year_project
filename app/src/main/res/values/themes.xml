@@ -2,7 +2,18 @@
 <resources>
 
     <style name="Theme.Therapy_app" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+
+        <!-- REQUIRED for MaterialComponents to render icons correctly -->
+        <item name="colorPrimary">@android:color/transparent</item>
+        <item name="colorOnPrimary">@android:color/black</item>
+
+        <!-- Controls default icon tinting (prevents black squares) -->
+        <item name="android:colorControlNormal">@android:color/black</item>
+        <item name="android:colorControlHighlight">@android:color/darker_gray</item>
+
+        <!-- Your existing setting -->
         <item name="textInputStyle">@style/MyTextInputStyle</item>
+
     </style>
 
     <style name="MyTextInputStyle" parent="Widget.MaterialComponents.TextInputLayout.FilledBox">
