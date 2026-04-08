@@ -41,6 +41,7 @@
         <activity android:name=".MoodTrackingActivity"/>
         <activity android:name=".JournalingActivity"/>
         <activity android:name=".ArticlesActivity"/>
+        <activity android:name=".ChatActivity"/>
 
 
 
