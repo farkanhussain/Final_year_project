@@ -78,6 +78,7 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.android.gms:play-services-auth:20.7.0")
     implementation(libs.filament.android)
+    implementation(libs.google.material)
 
     // Testing
     testImplementation("junit:junit:4.13.2")

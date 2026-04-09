@@ -167,9 +167,9 @@ class TherapyActivity : AppCompatActivity() {
     // ----------------------------------------------------
     private fun loadSessions(): MutableList<Session> {
         return mutableListOf(
-            Session("Session 1", "Talked about anxiety", listOf("Anxiety")),
-            Session("Session 2", "Mindfulness practice", listOf("Mindfulness")),
-            Session("Session 3", "CBT reframing", listOf("CBT"))
+            Session("1","Session 1", "Talked about anxiety", listOf("Anxiety")),
+            Session("2","Session 2", "Mindfulness practice", listOf("Mindfulness")),
+            Session("3","Session 3", "CBT reframing", listOf("CBT"))
         )
     }
 }

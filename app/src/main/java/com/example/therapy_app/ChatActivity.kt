@@ -20,6 +20,11 @@ class ChatActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+
+
+        window.setDecorFitsSystemWindows(true)
+
         setContentView(R.layout.activity_chat)
 
         // -----------------------------
@@ -31,11 +36,15 @@ class ChatActivity : AppCompatActivity() {
         val sendButton = findViewById<ImageButton>(R.id.sendButton)
         val voiceButton = findViewById<ImageButton>(R.id.voiceButton)
 
+
+        setSupportActionBar(toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+
         // -----------------------------
         // BACK BUTTON
         // -----------------------------
         toolbar.setNavigationOnClickListener {
-            finish()
+            onBackPressedDispatcher.onBackPressed()
         }
 
         // -----------------------------
@@ -96,7 +105,6 @@ class ChatActivity : AppCompatActivity() {
 
     // Placeholder for OpenAI API call
     private fun sendToAI(userMessage: String) {
-        // TODO: Replace with actual OpenAI API call
         val fakeResponse = "This is where the AI response will appear."
         addMessage(fakeResponse, isUser = false)
     }
