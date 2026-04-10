@@ -3,12 +3,15 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawer_layout_therapy"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/beige">
 
     <!-- MAIN CONTENT -->
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/root_therapy_layout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:padding="24dp"
@@ -34,6 +37,11 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             app:endIconMode="clear_text"
+            app:boxBackgroundMode="filled"
+            app:boxBackgroundColor="@color/red_dark"
+            app:hintTextColor="@color/hint_colors"
+            app:boxStrokeColor="@color/white"
+            app:hintTextAppearance="@style/TherapyHintAppearance"
             app:layout_constraintTop_toBottomOf="@id/toolbar_therapy"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
@@ -41,7 +49,8 @@
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/searchInput"
                 android:hint="Search sessions"
-                android:gravity="center"
+                android:textColor="@color/white"
+                android:textColorHint="@color/white"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"/>
         </com.google.android.material.textfield.TextInputLayout>
@@ -64,6 +73,8 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:paddingTop="8dp"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
             app:layout_constraintTop_toBottomOf="@id/tagChipGroup"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
@@ -82,7 +93,6 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:srcCompat="@drawable/add_button"
             app:tint="@android:color/white" />
-
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
