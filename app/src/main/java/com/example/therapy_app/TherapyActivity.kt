@@ -19,6 +19,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class TherapyActivity : AppCompatActivity() {
 
@@ -46,18 +47,61 @@ class TherapyActivity : AppCompatActivity() {
         drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
 
+        // ----------------------------------------------------
+        // LOAD USER DETAILS FROM FIRESTORE (name, email, age, gender)
+        // ----------------------------------------------------
         val user = FirebaseAuth.getInstance().currentUser
-        val email = user?.email ?: "Unknown"
+        val userId = user?.uid
 
         val headerView = navView.getHeaderView(0)
-        val emailTextView = headerView.findViewById<TextView>(R.id.header_profile_email)
-        emailTextView.text = email
 
+        // Existing header fields
+        val nameTextView = headerView.findViewById<TextView>(R.id.header_profile_name)
+        val emailTextView = headerView.findViewById<TextView>(R.id.header_profile_email)
+
+        // Future fields (not in XML yet)
+        // val ageTextView = headerView.findViewById<TextView>(R.id.header_profile_age)
+        // val genderTextView = headerView.findViewById<TextView>(R.id.header_profile_gender)
+
+        if (userId != null) {
+            FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(userId)
+                .get()
+                .addOnSuccessListener { document ->
+                    if (document.exists()) {
+
+                        val name = document.getString("name") ?: "Profile"
+                        val email = document.getString("email") ?: user.email ?: "Unknown"
+                        val age = document.getString("age") ?: "Not set"
+                        val gender = document.getString("gender") ?: "Not set"
+
+                        // Set existing header fields
+                        nameTextView.text = name
+                        emailTextView.text = email
+
+                        // These will work once you add the TextViews
+                        // ageTextView.text = age
+                        // genderTextView.text = gender
+                    }
+                }
+                .addOnFailureListener {
+                    nameTextView.text = "Profile"
+                    emailTextView.text = user?.email ?: "Unknown"
+                }
+        }
+
+        // ----------------------------------------------------
+        // HANDLE HEADER CLICK
+        // ----------------------------------------------------
         headerView.setOnClickListener {
             startActivity(Intent(this, ProfileActivity::class.java))
             drawerLayout.closeDrawers()
         }
 
+        // ----------------------------------------------------
+        // HANDLE MENU ITEM CLICKS
+        // ----------------------------------------------------
         navView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
                 R.id.nav_home -> startActivity(Intent(this, MainActivity::class.java))
@@ -70,6 +114,10 @@ class TherapyActivity : AppCompatActivity() {
             true
         }
 
+        // ----------------------------------------------------
+        // THERAPY SCREEN LOGIC (unchanged)
+        // ----------------------------------------------------
+
         val recyclerView = findViewById<RecyclerView>(R.id.sessionRecyclerView)
         recyclerView.layoutManager = LinearLayoutManager(this)
 
@@ -77,15 +125,11 @@ class TherapyActivity : AppCompatActivity() {
         adapter = SessionAdapter(allSessions)
         recyclerView.adapter = adapter
 
-        // ----------------------------------------------------
-        // SEARCH BAR LOGIC
-        // ----------------------------------------------------
         val searchInput = findViewById<TextInputEditText>(R.id.searchInput)
         val searchBar = findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.searchBar)
 
         searchInput.clearFocus()
 
-        // DEBUG: See if focus actually changes
         searchInput.setOnFocusChangeListener { _, hasFocus ->
             Log.d("FOCUS_DEBUG", "SearchInput focus = $hasFocus")
 
@@ -98,9 +142,6 @@ class TherapyActivity : AppCompatActivity() {
             }
         }
 
-        // ----------------------------------------------------
-        // FORCE SEARCH BAR TO LOSE FOCUS WHEN CLICKING OUTSIDE
-        // ----------------------------------------------------
         clearFocusWhenClickingOutside()
 
         val chipGroup = findViewById<ChipGroup>(R.id.tagChipGroup)
@@ -116,9 +157,6 @@ class TherapyActivity : AppCompatActivity() {
         }
     }
 
-    // ----------------------------------------------------
-    // FORCE CLEAR FOCUS WHEN CLICKING OUTSIDE SEARCH BAR
-    // ----------------------------------------------------
     private fun clearFocusWhenClickingOutside() {
         val root = findViewById<ConstraintLayout>(R.id.root_therapy_layout)
 
@@ -128,7 +166,7 @@ class TherapyActivity : AppCompatActivity() {
         }
     }
 
-    private fun filterSessions(query: String, tags: List<String>) {
+    private fun filterSessions(query: String, tags: List<String>): List<Session> {
         val filtered = allSessions.filter { session ->
 
             val matchesQuery = session.title.contains(query, ignoreCase = true) ||
@@ -141,6 +179,7 @@ class TherapyActivity : AppCompatActivity() {
         }
 
         adapter.updateList(filtered)
+        return filtered
     }
 
     private fun getSelectedTags(): List<String> {
@@ -172,9 +211,10 @@ class TherapyActivity : AppCompatActivity() {
 
     private fun loadSessions(): MutableList<Session> {
         return mutableListOf(
-            Session("1","Session 1", "Talked about anxiety", listOf("Anxiety")),
-            Session("2","Session 2", "Mindfulness practice", listOf("Mindfulness")),
-            Session("3","Session 3", "CBT reframing", listOf("CBT"))
+            Session("1", "Session 1", "Talked about anxiety", listOf("Anxiety")),
+            Session("2", "Session 2", "Mindfulness practice", listOf("Mindfulness")),
+            Session("3", "Session 3", "CBT reframing", listOf("CBT"))
         )
     }
 }
+
