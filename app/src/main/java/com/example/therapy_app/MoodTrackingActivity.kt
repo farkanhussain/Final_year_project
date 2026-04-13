@@ -8,6 +8,7 @@ import androidx.drawerlayout.widget.DrawerLayout
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import android.widget.TextView
 
 class MoodTrackingActivity : AppCompatActivity() {
@@ -37,14 +38,48 @@ class MoodTrackingActivity : AppCompatActivity() {
         toggle.syncState()
 
         // ----------------------------------------------------
-        // SET USER EMAIL IN DRAWER HEADER (Firebase)
+        // LOAD USER DETAILS FROM FIRESTORE (name, email, age, gender)
         // ----------------------------------------------------
         val user = FirebaseAuth.getInstance().currentUser
-        val email = user?.email ?: "Unknown"
+        val userId = user?.uid
 
         val headerView = navView.getHeaderView(0)
+
+        // Existing header fields
+        val nameTextView = headerView.findViewById<TextView>(R.id.header_profile_name)
         val emailTextView = headerView.findViewById<TextView>(R.id.header_profile_email)
-        emailTextView.text = email
+
+        // Future fields (not in XML yet)
+        // val ageTextView = headerView.findViewById<TextView>(R.id.header_profile_age)
+        // val genderTextView = headerView.findViewById<TextView>(R.id.header_profile_gender)
+
+        if (userId != null) {
+            FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(userId)
+                .get()
+                .addOnSuccessListener { document ->
+                    if (document.exists()) {
+
+                        val name = document.getString("name") ?: "Profile"
+                        val email = document.getString("email") ?: user.email ?: "Unknown"
+                        val age = document.getString("age") ?: "Not set"
+                        val gender = document.getString("gender") ?: "Not set"
+
+                        // Set existing header fields
+                        nameTextView.text = name
+                        emailTextView.text = email
+
+                        // These will work once you add the TextViews
+                        // ageTextView.text = age
+                        // genderTextView.text = gender
+                    }
+                }
+                .addOnFailureListener {
+                    nameTextView.text = "Profile"
+                    emailTextView.text = user?.email ?: "Unknown"
+                }
+        }
 
         // ----------------------------------------------------
         // HANDLE HEADER CLICK
@@ -60,31 +95,20 @@ class MoodTrackingActivity : AppCompatActivity() {
         navView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
 
-                R.id.nav_home -> {
-                    startActivity(Intent(this, MainActivity::class.java))
-                }
+                R.id.nav_home -> startActivity(Intent(this, MainActivity::class.java))
 
-                R.id.nav_therapy -> {
-                    startActivity(Intent(this, TherapyActivity::class.java))
-                }
+                R.id.nav_therapy -> startActivity(Intent(this, TherapyActivity::class.java))
 
-                R.id.nav_mood_tracking -> {
-                    startActivity(Intent(this, MoodTrackingActivity::class.java))
-                }
+                R.id.nav_mood_tracking -> startActivity(Intent(this, MoodTrackingActivity::class.java))
 
-                R.id.nav_journaling -> {
-                    startActivity(Intent(this, JournalingActivity::class.java))
-                }
+                R.id.nav_journaling -> startActivity(Intent(this, JournalingActivity::class.java))
 
-                R.id.nav_articles -> {
-                    startActivity(Intent(this, ArticlesActivity::class.java))
-                }
+                R.id.nav_articles -> startActivity(Intent(this, ArticlesActivity::class.java))
 
-                R.id.nav_settings -> {
-                    startActivity(Intent(this, SettingsActivity::class.java))
-                }
+                R.id.nav_settings -> startActivity(Intent(this, SettingsActivity::class.java))
             }
             true
         }
     }
 }
+

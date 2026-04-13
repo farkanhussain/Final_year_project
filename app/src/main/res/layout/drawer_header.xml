@@ -3,7 +3,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="200dp"
+    android:layout_height="220dp"
     android:background="@color/red_dark"
     android:padding="16dp"
     android:elevation="4dp">
@@ -16,18 +16,18 @@
         android:src="@drawable/profile"
         android:contentDescription="Profile Icon"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/header_profile_name"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/header_profile_name"
         app:layout_constraintVertical_chainStyle="packed"
         app:tint="@color/white" />
 
-    <!-- Username or Title -->
+    <!-- Name -->
     <TextView
         android:id="@+id/header_profile_name"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Profile"
+        android:text="Profile Name"
         android:textColor="@color/white"
         android:textSize="20sp"
         android:layout_marginTop="12dp"
@@ -35,6 +35,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
+    <!-- Email -->
     <TextView
         android:id="@+id/header_profile_email"
         android:layout_width="wrap_content"
@@ -46,6 +47,31 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
+    <!-- Age -->
+    <TextView
+        android:id="@+id/header_profile_age"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Age: 18–24"
+        android:textColor="@color/white"
+        android:textSize="14sp"
+        android:layout_marginTop="4dp"
+        app:layout_constraintTop_toBottomOf="@id/header_profile_email"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Gender -->
+    <TextView
+        android:id="@+id/header_profile_gender"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Gender: Male"
+        android:textColor="@color/white"
+        android:textSize="14sp"
+        android:layout_marginTop="2dp"
+        app:layout_constraintTop_toBottomOf="@id/header_profile_age"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
 
     <!-- Divider Line -->
     <View

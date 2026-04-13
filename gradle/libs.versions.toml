@@ -19,6 +19,7 @@ androidxJunit = "1.1.5"
 espressoCore = "3.5.1"
 filamentAndroid = "1.17.1"
 materialVersion = "1.13.0"
+firebaseFirestoreKtx = "26.1.2"
 
 [libraries]
 # Core Android libraries
@@ -44,6 +45,7 @@ androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "a
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 filament-android = { group = "com.google.ar.sceneform", name = "filament-android", version.ref = "filamentAndroid" }
 google-material = { group = "com.google.android.material", name = "material", version.ref = "materialVersion" }
+firebase-firestore-ktx = { group = "com.google.firebase", name = "firebase-firestore-ktx", version.ref = "firebaseFirestoreKtx" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
