@@ -113,8 +113,7 @@ class RegisterActivity : AppCompatActivity() {
 
     private fun registerUser(name: String, age: String, gender: String, email: String, password: String) {
 
-        // 🔥 IMPORTANT: Sign out cached user before creating a new one
-        auth.signOut()
+
 
         auth.createUserWithEmailAndPassword(email, password)
             .addOnCompleteListener(this) { task ->
