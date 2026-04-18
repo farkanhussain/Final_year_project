@@ -1,28 +1,84 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical"
-    android:padding="24dp"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content"
+    android:background="@color/beige">
 
-    <ListView
-        android:id="@+id/tagListView"
+    <LinearLayout
+        android:orientation="vertical"
+        android:padding="24dp"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:choiceMode="multipleChoice" />
+        android:layout_height="wrap_content">
 
-    <EditText
-        android:id="@+id/customTagInput"
-        android:hint="Add custom tag"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingTop="20dp" />
+        <!-- Title Input -->
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/DialogTextInputStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
 
-    <Button
-        android:id="@+id/saveTagsButton"
-        android:text="Save Tags"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="20dp" />
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/titleInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@null"
+                android:hint="Session Title"
+                android:textColor="@color/white"
+                android:textColorHint="@color/white"
+                android:textCursorDrawable="@null"/>
+        </com.google.android.material.textfield.TextInputLayout>
 
-</LinearLayout>
+        <!-- Tag Label -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Select Tags"
+            android:textStyle="bold"
+            android:paddingTop="20dp"
+            android:textSize="16sp"
+            android:textColor="@color/grey" />
+
+        <!-- ChipGroup (dynamic chips added in Kotlin) -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/tagChipGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="10dp"
+            app:chipSpacing="8dp"
+            app:singleLine="false"
+            app:singleSelection="false"
+            android:layout_marginBottom="10dp" />
+
+        <!-- Custom Tag Input -->
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/DialogTextInputStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/customTagInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@null"
+                android:hint="Add custom tag"
+                android:textColor="@color/white"
+                android:textColorHint="@color/white"
+                android:textCursorDrawable="@null"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Save Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/saveTagsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Save"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/red_dark"
+            app:rippleColor="@color/red"
+            app:cornerRadius="12dp"
+            style="@style/Widget.MaterialComponents.Button" />
+
+    </LinearLayout>
+
+</ScrollView>

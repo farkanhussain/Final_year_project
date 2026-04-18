@@ -1,3 +1,6 @@
+import java.util.Properties
+
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -15,7 +18,22 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        val localProps = Properties()
+        val localFile = rootProject.file("local.properties")
+
+        if (localFile.exists()) {
+            localProps.load(localFile.inputStream())
+        }
+
+        val openAiKey = localProps.getProperty("OPENAI_API_KEY") ?: ""
+        buildConfigField("String", "OPENAI_API_KEY", "\"$openAiKey\"")
+
     }
+
+
+
+
 
     buildTypes {
         release {
@@ -35,6 +53,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -93,5 +112,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("com.aallam.openai:openai-client:3.8.0")
+    implementation("io.ktor:ktor-client-android:2.3.4")
 
 }
