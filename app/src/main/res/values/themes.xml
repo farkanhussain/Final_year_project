@@ -1,24 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!-- MAIN APP THEME -->
     <style name="Theme.Therapy_app" parent="Theme.MaterialComponents.DayNight.NoActionBar">
 
-        <!-- REQUIRED for MaterialComponents to render icons correctly -->
+        <!-- Required for MaterialComponents -->
         <item name="colorPrimary">@android:color/transparent</item>
         <item name="colorOnPrimary">@android:color/black</item>
 
-        <!-- Controls default icon tinting (prevents black squares) -->
+        <!-- Prevents black square icons -->
         <item name="android:colorControlNormal">@android:color/black</item>
         <item name="android:colorControlHighlight">@android:color/darker_gray</item>
 
-        <!-- Your existing setting -->
+        <!-- Default TextInputLayout style for Activities -->
         <item name="textInputStyle">@style/MyTextInputStyle</item>
 
     </style>
 
+
+    <!-- TEXT INPUT STYLE FOR ACTIVITY SCREENS -->
     <style name="MyTextInputStyle" parent="Widget.MaterialComponents.TextInputLayout.FilledBox">
+        <item name="boxBackgroundMode">filled</item>
+        <item name="boxBackgroundColor">@color/red_dark</item>
+        <item name="boxStrokeColor">@color/white</item>
+
+        <!-- Hint colors -->
         <item name="android:textColorHint">@color/white</item>
         <item name="hintTextColor">@color/white</item>
+    </style>
+
+
+
+
+
+    <!-- TEXT INPUT STYLE FOR DIALOGS -->
+    <style name="DialogTextInputStyle" parent="Widget.MaterialComponents.TextInputLayout.FilledBox">
+        <item name="boxBackgroundMode">filled</item>
+        <item name="boxBackgroundColor">@color/red_dark</item>
+        <item name="boxStrokeColor">@color/white</item>
+
+        <!-- Hint colors -->
+        <item name="android:textColorHint">@color/white</item>
+        <item name="hintTextColor">@color/hint_colors</item>
     </style>
 
 </resources>

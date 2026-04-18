@@ -2,7 +2,6 @@ package com.example.therapy_app
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.view.MenuItem
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -29,7 +28,7 @@ class RegisterActivity : AppCompatActivity() {
 
         auth = FirebaseAuth.getInstance()
 
-        // 🔐 CLEAR SAVED LOGIN DETAILS (must match LoginActivity EXACTLY)
+
         val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
 
         val prefs = EncryptedSharedPreferences.create(
@@ -39,11 +38,6 @@ class RegisterActivity : AppCompatActivity() {
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
-
-        prefs.edit().clear().apply()
-
-        // 🧪 Confirm clearing worked
-        Log.d("REGISTER_DEBUG", "Saved email after clearing: ${prefs.getString("savedEmail", "EMPTY")}")
 
         // UI Elements
         val nameEditText = findViewById<TextInputEditText>(R.id.nameRegister)
@@ -83,9 +77,6 @@ class RegisterActivity : AppCompatActivity() {
             val email = emailEditText.text.toString().trim()
             val password = passwordEditText.text.toString().trim()
 
-            // 🧪 DEBUG LOG — SEE EXACT EMAIL USED
-            Log.d("REGISTER_DEBUG", "Attempting registration with email: $email")
-
             // Validation
             if (email.isEmpty() || password.isEmpty()) {
                 Toast.makeText(this, "Email and password are required", Toast.LENGTH_SHORT).show()
@@ -112,8 +103,6 @@ class RegisterActivity : AppCompatActivity() {
     }
 
     private fun registerUser(name: String, age: String, gender: String, email: String, password: String) {
-
-
 
         auth.createUserWithEmailAndPassword(email, password)
             .addOnCompleteListener(this) { task ->
@@ -162,3 +151,4 @@ class RegisterActivity : AppCompatActivity() {
         return super.onOptionsItemSelected(item)
     }
 }
+

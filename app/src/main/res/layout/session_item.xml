@@ -9,20 +9,20 @@
     app:cardCornerRadius="12dp"
     android:backgroundTint="@color/red_dark">
 
-    <!-- NEW: Horizontal container so text stays left and icon stays right -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:padding="16dp">
 
-        <!-- Existing text content -->
+        <!-- LEFT SIDE: TITLE + TIMESTAMP + TAGS + PREVIEW -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:layout_weight="1">
 
+            <!-- Session Title -->
             <TextView
                 android:id="@+id/sessionTitle"
                 android:layout_width="wrap_content"
@@ -32,19 +32,40 @@
                 android:textStyle="bold"
                 android:textColor="@android:color/white"/>
 
+            <!-- Timestamp -->
             <TextView
-                android:id="@+id/sessionNotes"
+                android:id="@+id/sessionTimestamp"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Session notes preview..."
+                android:text="12 Apr 2026"
+                android:textSize="12sp"
+                android:textColor="@android:color/darker_gray"
+                android:layout_marginTop="2dp"/>
+
+            <!-- Tags -->
+            <TextView
+                android:id="@+id/sessionTags"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Tags: anxiety, stress"
                 android:textSize="14sp"
                 android:textColor="@android:color/darker_gray"
+                android:layout_marginTop="4dp"/>
+
+            <!-- Conversation Preview -->
+            <TextView
+                android:id="@+id/sessionPreview"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Conversation preview goes here..."
+                android:textSize="14sp"
+                android:textColor="@android:color/white"
                 android:maxLines="2"
                 android:ellipsize="end"
                 android:layout_marginTop="4dp"/>
         </LinearLayout>
 
-        <!-- NEW: Manage icon -->
+        <!-- RIGHT SIDE: MANAGE ICON -->
         <ImageView
             android:id="@+id/manageSessionIcon"
             android:layout_width="24dp"
@@ -55,7 +76,7 @@
             android:clickable="true"
             android:focusable="true"
             android:foreground="?attr/selectableItemBackgroundBorderless"/>
-
     </LinearLayout>
 
 </com.google.android.material.card.MaterialCardView>
+

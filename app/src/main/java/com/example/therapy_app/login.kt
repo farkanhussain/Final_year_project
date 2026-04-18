@@ -45,6 +45,8 @@ class LoginActivity : AppCompatActivity() {
         val savedPassword = prefs.getString("savedPassword", "")
         val rememberMe = prefs.getBoolean("rememberMe", false)
 
+
+
         if (rememberMe) {
             email.setText(savedEmail)
             password.setText(savedPassword)
@@ -78,6 +80,7 @@ class LoginActivity : AppCompatActivity() {
         auth.signInWithEmailAndPassword(email, password)
             .addOnSuccessListener {
 
+
                 // 🔐 Save login info securely only if Remember Me is checked
                 if (rememberMe) {
                     prefs.edit().apply {
@@ -86,6 +89,8 @@ class LoginActivity : AppCompatActivity() {
                         putBoolean("rememberMe", true)
                         apply()
                     }
+
+
                 } else {
                     prefs.edit().clear().apply()
                 }
@@ -98,6 +103,9 @@ class LoginActivity : AppCompatActivity() {
                 if (e is FirebaseAuthMultiFactorException) {
                     val intent = Intent(this, MfaSignInActivity::class.java)
                     intent.putExtra("resolver", e.resolver)
+                    intent.putExtra("email", email)
+                    intent.putExtra("password", password)
+                    intent.putExtra("rememberMe", rememberMe)
                     startActivity(intent)
                 } else {
                     Toast.makeText(this, "Login Failed: ${e.message}", Toast.LENGTH_LONG).show()

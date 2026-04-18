@@ -7,15 +7,20 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.RecyclerView
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class SessionAdapter(
-    private var sessions: List<Session>
+    private var sessions: List<TherapySession>
 ) : RecyclerView.Adapter<SessionAdapter.SessionViewHolder>() {
 
     inner class SessionViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val title: TextView = itemView.findViewById(R.id.sessionTitle)
-        val notes: TextView = itemView.findViewById(R.id.sessionNotes)
-        val manageIcon: ImageView = itemView.findViewById(R.id.manageSessionIcon)   // ⭐ ADD THIS
+        val tags: TextView = itemView.findViewById(R.id.sessionTags)
+        val preview: TextView = itemView.findViewById(R.id.sessionPreview)
+        val timestamp: TextView = itemView.findViewById(R.id.sessionTimestamp)
+        val manageIcon: ImageView = itemView.findViewById(R.id.manageSessionIcon)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SessionViewHolder {
@@ -27,10 +32,24 @@ class SessionAdapter(
     override fun onBindViewHolder(holder: SessionViewHolder, position: Int) {
         val session = sessions[position]
 
-        holder.title.text = session.title
-        holder.notes.text = session.notes
+        // ⭐ Title (if you added title to your model)
+        holder.title.text = session.title.ifBlank { "Untitled Session" }
 
-        // ⭐ THIS IS WHERE THE BOTTOM SHEET IS TRIGGERED
+        // ⭐ Tags
+        holder.tags.text =
+            if (session.tags.isNotEmpty()) "Tags: " + session.tags.joinToString(", ")
+            else "Tags: None"
+
+        // ⭐ Conversation preview (first message)
+        val previewText = session.messages.firstOrNull()?.text ?: "No messages yet"
+        holder.preview.text = previewText
+
+        // ⭐ Timestamp → formatted date
+        val date = Date(session.timestamp)
+        val formatter = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+        holder.timestamp.text = formatter.format(date)
+
+        // ⭐ Manage session bottom sheet
         holder.manageIcon.setOnClickListener {
             val sheet = ManageSessionBottomSheet(session.id)
 
@@ -43,7 +62,7 @@ class SessionAdapter(
 
     override fun getItemCount(): Int = sessions.size
 
-    fun updateList(newList: List<Session>) {
+    fun updateList(newList: List<TherapySession>) {
         sessions = newList
         notifyDataSetChanged()
     }

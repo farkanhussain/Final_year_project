@@ -4,7 +4,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
-import android.util.Log
 import android.widget.TextView
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
@@ -25,7 +24,10 @@ class TherapyActivity : AppCompatActivity() {
 
     private lateinit var drawerLayout: DrawerLayout
     private lateinit var adapter: SessionAdapter
-    private lateinit var allSessions: MutableList<Session>
+
+    private val allSessions = mutableListOf<TherapySession>()
+    private val db = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,60 +50,32 @@ class TherapyActivity : AppCompatActivity() {
         toggle.syncState()
 
         // ----------------------------------------------------
-        // LOAD USER DETAILS FROM FIRESTORE (name, email, age, gender)
+        // LOAD USER DETAILS INTO NAV HEADER
         // ----------------------------------------------------
-        val user = FirebaseAuth.getInstance().currentUser
+        val user = auth.currentUser
         val userId = user?.uid
 
         val headerView = navView.getHeaderView(0)
-
-        // Existing header fields
         val nameTextView = headerView.findViewById<TextView>(R.id.header_profile_name)
         val emailTextView = headerView.findViewById<TextView>(R.id.header_profile_email)
 
-        // Future fields (not in XML yet)
-        // val ageTextView = headerView.findViewById<TextView>(R.id.header_profile_age)
-        // val genderTextView = headerView.findViewById<TextView>(R.id.header_profile_gender)
-
         if (userId != null) {
-            FirebaseFirestore.getInstance()
-                .collection("users")
+            db.collection("users")
                 .document(userId)
                 .get()
                 .addOnSuccessListener { document ->
                     if (document.exists()) {
-
-                        val name = document.getString("name") ?: "Profile"
-                        val email = document.getString("email") ?: user.email ?: "Unknown"
-                        val age = document.getString("age") ?: "Not set"
-                        val gender = document.getString("gender") ?: "Not set"
-
-                        // Set existing header fields
-                        nameTextView.text = name
-                        emailTextView.text = email
-
-                        // These will work once you add the TextViews
-                        // ageTextView.text = age
-                        // genderTextView.text = gender
+                        nameTextView.text = document.getString("name") ?: "Profile"
+                        emailTextView.text = document.getString("email") ?: user.email ?: "Unknown"
                     }
-                }
-                .addOnFailureListener {
-                    nameTextView.text = "Profile"
-                    emailTextView.text = user?.email ?: "Unknown"
                 }
         }
 
-        // ----------------------------------------------------
-        // HANDLE HEADER CLICK
-        // ----------------------------------------------------
         headerView.setOnClickListener {
             startActivity(Intent(this, ProfileActivity::class.java))
             drawerLayout.closeDrawers()
         }
 
-        // ----------------------------------------------------
-        // HANDLE MENU ITEM CLICKS
-        // ----------------------------------------------------
         navView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
                 R.id.nav_home -> startActivity(Intent(this, MainActivity::class.java))
@@ -115,32 +89,28 @@ class TherapyActivity : AppCompatActivity() {
         }
 
         // ----------------------------------------------------
-        // THERAPY SCREEN LOGIC (unchanged)
+        // SETUP RECYCLER VIEW
         // ----------------------------------------------------
-
         val recyclerView = findViewById<RecyclerView>(R.id.sessionRecyclerView)
         recyclerView.layoutManager = LinearLayoutManager(this)
 
-        allSessions = loadSessions()
         adapter = SessionAdapter(allSessions)
         recyclerView.adapter = adapter
 
+        // ----------------------------------------------------
+        // SEARCH + TAG FILTERING
+        // ----------------------------------------------------
         val searchInput = findViewById<TextInputEditText>(R.id.searchInput)
-        val searchBar = findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.searchBar)
 
         searchInput.clearFocus()
 
-        searchInput.setOnFocusChangeListener { _, hasFocus ->
-            Log.d("FOCUS_DEBUG", "SearchInput focus = $hasFocus")
-
-            if (!hasFocus) {
-                searchBar.post {
-                    val currentHint = searchBar.hint
-                    searchBar.hint = null
-                    searchBar.hint = currentHint
-                }
+        searchInput.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) {
+                filterSessions(s.toString(), getSelectedTags())
             }
-        }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
 
         clearFocusWhenClickingOutside()
 
@@ -151,26 +121,63 @@ class TherapyActivity : AppCompatActivity() {
             filterSessions(searchInput.text.toString(), getSelectedTags())
         }
 
+        // ----------------------------------------------------
+        // NEW SESSION BUTTON
+        // ----------------------------------------------------
         val fab = findViewById<FloatingActionButton>(R.id.newSessionFab)
         fab.setOnClickListener {
             startActivity(Intent(this, ChatActivity::class.java))
         }
     }
 
+    // ----------------------------------------------------
+    // REFRESH SESSIONS WHEN RETURNING TO THIS SCREEN ⭐
+    // ----------------------------------------------------
+    override fun onResume() {
+        super.onResume()
+        loadSessionsFromFirestore()
+    }
+
+    // ----------------------------------------------------
+    // LOAD SESSIONS FROM FIRESTORE
+    // ----------------------------------------------------
+    private fun loadSessionsFromFirestore() {
+        val user = auth.currentUser ?: return
+
+        db.collection("users")
+            .document(user.uid)
+            .collection("sessions")
+            .get()
+            .addOnSuccessListener { result ->
+                allSessions.clear()
+
+                for (doc in result) {
+                    val session = doc.toObject(TherapySession::class.java)
+                        .copy(id = doc.id)
+
+                    allSessions.add(session)
+                }
+
+                // ⭐ NEW: Sort by timestamp (newest first)
+                allSessions.sortByDescending { it.timestamp }
+
+                adapter.updateList(allSessions)
+            }
+    }
+
     private fun clearFocusWhenClickingOutside() {
         val root = findViewById<ConstraintLayout>(R.id.root_therapy_layout)
-
         root.setOnClickListener {
-            val searchInput = findViewById<TextInputEditText>(R.id.searchInput)
-            searchInput.clearFocus()
+            findViewById<TextInputEditText>(R.id.searchInput).clearFocus()
         }
     }
 
-    private fun filterSessions(query: String, tags: List<String>): List<Session> {
+    private fun filterSessions(query: String, tags: List<String>): List<TherapySession> {
         val filtered = allSessions.filter { session ->
 
-            val matchesQuery = session.title.contains(query, ignoreCase = true) ||
-                    session.notes.contains(query, ignoreCase = true)
+            val matchesQuery =
+                session.tags.any { it.contains(query, ignoreCase = true) } ||
+                        session.messages.any { it.text.contains(query, ignoreCase = true) }
 
             val matchesTags = if (tags.isEmpty()) true
             else tags.any { tag -> session.tags.contains(tag) }
@@ -208,13 +215,4 @@ class TherapyActivity : AppCompatActivity() {
             chipGroup.addView(chip)
         }
     }
-
-    private fun loadSessions(): MutableList<Session> {
-        return mutableListOf(
-            Session("1", "Session 1", "Talked about anxiety", listOf("Anxiety")),
-            Session("2", "Session 2", "Mindfulness practice", listOf("Mindfulness")),
-            Session("3", "Session 3", "CBT reframing", listOf("CBT"))
-        )
-    }
 }
-

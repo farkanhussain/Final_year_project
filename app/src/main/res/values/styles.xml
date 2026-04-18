@@ -12,10 +12,21 @@
     <style name="TagChipStyle" parent="Widget.MaterialComponents.Chip.Filter">
         <item name="chipBackgroundColor">@color/red_dark</item>
         <item name="android:textColor">@color/white</item>
+
+        <!-- Stroke (optional, you already had it) -->
         <item name="chipStrokeColor">@color/red_dark</item>
         <item name="chipStrokeWidth">1dp</item>
+
+        <!-- Ripple effect -->
+        <item name="rippleColor">@color/red</item>
+
+        <!-- No check icon -->
         <item name="checkedIconVisible">false</item>
+
+        <!-- Ensure chip is clickable -->
+        <item name="android:clickable">true</item>
     </style>
+
 
     <style name="TherapyHintAppearance" parent="TextAppearance.MaterialComponents.Body1">
         <item name="android:textColor">@color/hint_colors</item>

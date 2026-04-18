@@ -21,7 +21,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- ACTION BAR (Save + Add Tags) -->
+    <!-- ACTION BAR (Save only) -->
     <LinearLayout
         android:id="@+id/actionBar"
         android:layout_width="0dp"
@@ -37,19 +37,10 @@
             android:id="@+id/saveSessionButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Save Session"
+            android:text="Save"
             android:backgroundTint="@color/green"
-            app:rippleColor="@color/light_green"
-            android:textColor="@color/white"/>
-
-        <Button
-            android:id="@+id/addTagsButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Add Tags"
-            android:layout_marginStart="12dp"
-            android:backgroundTint="@color/red_dark"
-            android:textColor="@color/white"/>
+            android:textColor="@color/white"
+            app:rippleColor="@color/light_green"/>
     </LinearLayout>
 
     <!-- CHAT LIST -->
@@ -108,7 +99,6 @@
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
-
 
 
 
