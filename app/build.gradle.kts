@@ -86,7 +86,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
 
     // Material Components
-    implementation("com.google.android.material:material:1.11.0")
+    implementation("com.google.android.material:material:1.12.0")
 
     // Activity (non-compose)
     implementation("androidx.activity:activity:1.8.2")
@@ -114,5 +114,9 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.aallam.openai:openai-client:3.8.0")
     implementation("io.ktor:ktor-client-android:2.3.4")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
+
+
+
 
 }

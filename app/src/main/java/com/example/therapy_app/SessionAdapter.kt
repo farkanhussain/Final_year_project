@@ -5,14 +5,14 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.RecyclerView
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 class SessionAdapter(
-    private var sessions: List<TherapySession>
+    private var sessions: List<TherapySession>,
+    private val onManageClicked: (String) -> Unit   // ⭐ NEW CALLBACK
 ) : RecyclerView.Adapter<SessionAdapter.SessionViewHolder>() {
 
     inner class SessionViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -32,7 +32,7 @@ class SessionAdapter(
     override fun onBindViewHolder(holder: SessionViewHolder, position: Int) {
         val session = sessions[position]
 
-        // ⭐ Title (if you added title to your model)
+        // ⭐ Title
         holder.title.text = session.title.ifBlank { "Untitled Session" }
 
         // ⭐ Tags
@@ -40,23 +40,18 @@ class SessionAdapter(
             if (session.tags.isNotEmpty()) "Tags: " + session.tags.joinToString(", ")
             else "Tags: None"
 
-        // ⭐ Conversation preview (first message)
+        // ⭐ Preview
         val previewText = session.messages.firstOrNull()?.text ?: "No messages yet"
         holder.preview.text = previewText
 
-        // ⭐ Timestamp → formatted date
+        // ⭐ Timestamp
         val date = Date(session.timestamp)
         val formatter = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
         holder.timestamp.text = formatter.format(date)
 
-        // ⭐ Manage session bottom sheet
+        // ⭐ Manage icon → callback to activity
         holder.manageIcon.setOnClickListener {
-            val sheet = ManageSessionBottomSheet(session.id)
-
-            sheet.show(
-                (holder.itemView.context as AppCompatActivity).supportFragmentManager,
-                "manageSession"
-            )
+            onManageClicked(session.id)
         }
     }
 
@@ -67,3 +62,4 @@ class SessionAdapter(
         notifyDataSetChanged()
     }
 }
+
