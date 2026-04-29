@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -19,6 +20,8 @@ import com.google.android.material.navigation.NavigationView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import android.content.res.ColorStateList
+import android.graphics.Color
 
 class TherapyActivity : AppCompatActivity() {
 
@@ -94,7 +97,10 @@ class TherapyActivity : AppCompatActivity() {
         val recyclerView = findViewById<RecyclerView>(R.id.sessionRecyclerView)
         recyclerView.layoutManager = LinearLayoutManager(this)
 
-        adapter = SessionAdapter(allSessions)
+        adapter = SessionAdapter(allSessions) { sessionId ->
+            showManageBottomSheet(sessionId)
+        }
+
         recyclerView.adapter = adapter
 
         // ----------------------------------------------------
@@ -131,7 +137,40 @@ class TherapyActivity : AppCompatActivity() {
     }
 
     // ----------------------------------------------------
-    // REFRESH SESSIONS WHEN RETURNING TO THIS SCREEN ⭐
+    // OPEN BOTTOM SHEET
+    // ----------------------------------------------------
+    private fun showManageBottomSheet(sessionId: String) {
+        val bottomSheet = ManageSessionBottomSheet(
+            sessionId = sessionId,
+            onDeleteSession = { id ->
+                deleteSession(id)
+            }
+        )
+        bottomSheet.show(supportFragmentManager, "ManageSessionBottomSheet")
+    }
+
+    // ----------------------------------------------------
+    // DELETE SESSION FROM FIRESTORE
+    // ----------------------------------------------------
+    private fun deleteSession(sessionId: String) {
+        val user = auth.currentUser ?: return
+
+        db.collection("users")
+            .document(user.uid)
+            .collection("sessions")
+            .document(sessionId)
+            .delete()
+            .addOnSuccessListener {
+                Toast.makeText(this, "Session deleted", Toast.LENGTH_SHORT).show()
+                loadSessionsFromFirestore()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Failed to delete: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+
+    // ----------------------------------------------------
+    // REFRESH SESSIONS WHEN RETURNING TO THIS SCREEN
     // ----------------------------------------------------
     override fun onResume() {
         super.onResume()
@@ -158,7 +197,6 @@ class TherapyActivity : AppCompatActivity() {
                     allSessions.add(session)
                 }
 
-                // ⭐ NEW: Sort by timestamp (newest first)
                 allSessions.sortByDescending { it.timestamp }
 
                 adapter.updateList(allSessions)
@@ -207,12 +245,17 @@ class TherapyActivity : AppCompatActivity() {
 
                 setChipBackgroundColorResource(R.color.red_dark)
                 setTextColor(resources.getColor(R.color.white, theme))
+
                 chipStrokeColor = resources.getColorStateList(R.color.red_dark, theme)
                 chipStrokeWidth = 1f
-                rippleColor = null
+
+                // ✅ ripple must be inside here
+                rippleColor = ColorStateList.valueOf(
+                    Color.parseColor("#8B0000")
+                )
             }
 
-            chipGroup.addView(chip)
+            chipGroup.addView(chip) // if you're using a ChipGroup
         }
     }
 }
