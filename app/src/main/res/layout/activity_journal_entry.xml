@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/beige"
+    android:padding="16dp">
+
+    <!-- TOOLBAR -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar_journal_entry"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:title="New Entry"
+        app:navigationIcon="@drawable/back_arrow"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- ===================================================== -->
+    <!-- SCROLLABLE CONTENT AREA -->
+    <!-- ===================================================== -->
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scrollArea"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toBottomOf="@id/toolbar_journal_entry"
+        app:layout_constraintBottom_toTopOf="@id/saveButton"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- ================= AI PROMPTS ================= -->
+
+            <TextView
+                android:id="@+id/promptLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Reflection Prompts"
+                android:textStyle="bold"
+                android:textColor="@android:color/black"
+                android:layout_marginTop="12dp"/>
+
+            <LinearLayout
+                android:id="@+id/promptContainer"
+                android:orientation="vertical"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="8dp"/>
+
+            <!-- ================= JOURNAL TEXT ================= -->
+
+            <EditText
+                android:id="@+id/journalText"
+                android:layout_width="match_parent"
+                android:layout_height="220dp"
+                android:background="@null"
+                android:gravity="top"
+                android:hint="Start writing your thoughts..."
+                android:textColor="@android:color/black"
+                android:textColorHint="#888888"
+                android:padding="16dp"
+                android:textSize="18sp"/>
+
+            <!-- ================= MOOD ================= -->
+
+            <TextView
+                android:id="@+id/moodLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="How are you feeling?"
+                android:textColor="@android:color/black"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp"/>
+
+            <LinearLayout
+                android:id="@+id/moodSelector"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <TextView android:text="😢" style="@style/moodEmoji"/>
+                <TextView android:text="😕" style="@style/moodEmoji"/>
+                <TextView android:text="😐" style="@style/moodEmoji"/>
+                <TextView android:text="🙂" style="@style/moodEmoji"/>
+                <TextView android:text="😄" style="@style/moodEmoji"/>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- MIC BUTTON (FLOATING OVER TEXT AREA) -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/micButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:contentDescription="Speech to text"
+        app:srcCompat="@drawable/mic"
+        app:tint="@android:color/white"
+        app:backgroundTint="@color/red_dark"
+        android:layout_margin="16dp"
+        app:layout_constraintBottom_toBottomOf="@id/scrollArea"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- SAVE BUTTON -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/saveButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Save"
+        android:textColor="@android:color/white"
+        android:backgroundTint="@color/green"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="16dp"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

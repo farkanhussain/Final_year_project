@@ -11,7 +11,6 @@
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:padding="24dp"
         android:background="@color/beige">
 
         <!-- Toolbar -->
@@ -20,25 +19,382 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:background="@color/beige"
-            android:title="Mood tracking"
+            android:title="Mood Tracking"
             android:titleTextColor="@android:color/black"
             app:navigationIconTint="@android:color/black"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
-
-        <TextView
-            android:id="@+id/MoodTrackingText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Mood tracking"
-            android:textSize="24sp"
-            android:textColor="@android:color/black"
+        <!-- Scrollable Content -->
+        <ScrollView
+            android:id="@+id/scrollContent"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:paddingBottom="32dp"
             app:layout_constraintTop_toBottomOf="@id/toolbar_mood_tracking"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="48dp"/>
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <LinearLayout
+                android:orientation="vertical"
+                android:padding="16dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <!-- SECTION: This Week -->
+                <TextView
+                    android:id="@+id/thisWeekLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="This week"
+                    android:textStyle="bold"
+                    android:textSize="18sp"
+                    android:textColor="@android:color/black"
+                    android:layout_marginBottom="8dp"/>
+
+                <!-- Weekly Chart -->
+                <!-- Weekly Chart -->
+                <LinearLayout
+                    android:id="@+id/weeklyMoodContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginBottom="24dp">
+
+                    <!-- Mon -->
+                    <!-- Mon -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center">
+
+                        <TextView
+                            android:id="@+id/dayMonLabel"
+                            android:text="Mon"
+                            android:textSize="10sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/dayMonMood"
+                            android:textSize="14sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/dayMonTimestamp"
+                            android:text="--:--"
+                            android:textSize="9sp"
+                            android:textColor="@android:color/darker_gray"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_marginTop="2dp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
+
+                    <!-- Tue -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center">
+
+                        <TextView
+                            android:id="@+id/dayTueLabel"
+                            android:text="Tue"
+                            android:textSize="10sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/dayTueMood"
+                            android:textSize="14sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/dayTueTimestamp"
+                            android:text="--:--"
+                            android:textSize="9sp"
+                            android:textColor="@android:color/darker_gray"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_marginTop="2dp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
+
+                    <!-- Wed -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center">
+
+                        <TextView
+                            android:id="@+id/dayWedLabel"
+                            android:text="Wed"
+                            android:textSize="10sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/dayWedMood"
+                            android:textSize="14sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/dayWedTimestamp"
+                            android:text="--:--"
+                            android:textSize="9sp"
+                            android:textColor="@android:color/darker_gray"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_marginTop="2dp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
+
+                    <!-- Thu -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center">
+
+                        <TextView
+                            android:id="@+id/dayThuLabel"
+                            android:text="Thu"
+                            android:textSize="10sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/dayThuMood"
+                            android:textSize="14sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/dayThuTimestamp"
+                            android:text="--:--"
+                            android:textSize="9sp"
+                            android:textColor="@android:color/darker_gray"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_marginTop="2dp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
+
+                    <!-- Fri -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center">
+
+                        <TextView
+                            android:id="@+id/dayFriLabel"
+                            android:text="Fri"
+                            android:textSize="10sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/dayFriMood"
+                            android:textSize="14sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/dayFriTimestamp"
+                            android:text="--:--"
+                            android:textSize="9sp"
+                            android:textColor="@android:color/darker_gray"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_marginTop="2dp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
+
+                    <!-- Sat -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center">
+
+                        <TextView
+                            android:id="@+id/daySatLabel"
+                            android:text="Sat"
+                            android:textSize="10sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/daySatMood"
+                            android:textSize="14sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/daySatTimestamp"
+                            android:text="--:--"
+                            android:textSize="9sp"
+                            android:textColor="@android:color/darker_gray"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_marginTop="2dp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
+
+                    <!-- Sun -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center">
+
+                        <TextView
+                            android:id="@+id/daySunLabel"
+                            android:text="Sun"
+                            android:textSize="10sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/daySunMood"
+                            android:textSize="14sp"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+
+                        <TextView
+                            android:id="@+id/daySunTimestamp"
+                            android:text="--:--"
+                            android:textSize="9sp"
+                            android:textColor="@android:color/darker_gray"
+                            android:maxLines="1"
+                            android:includeFontPadding="false"
+                            android:layout_marginTop="2dp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/latestMoodText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Latest mood: -"
+                    android:textSize="14sp"
+                    android:textColor="@android:color/darker_gray"
+                    android:layout_marginBottom="8dp"/>
+
+                <!-- SECTION: Mood -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="How are you feeling today?"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="8dp"/>
+
+                <LinearLayout
+                    android:id="@+id/moodSelector"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="24dp">
+
+                    <TextView android:text="😢" style="@style/moodEmoji"/>
+                    <TextView android:text="😕" style="@style/moodEmoji"/>
+                    <TextView android:text="😐" style="@style/moodEmoji"/>
+                    <TextView android:text="🙂" style="@style/moodEmoji"/>
+                    <TextView android:text="😄" style="@style/moodEmoji"/>
+
+                </LinearLayout>
+
+                <!-- BUTTON GROUP -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <Button
+                        android:id="@+id/goToJournal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Write Journal Entry"
+                        android:backgroundTint="@color/red_dark"
+                        android:textColor="@android:color/white"
+                        android:layout_marginBottom="8dp"/>
+
+                    <Button
+                        android:id="@+id/submitMood"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Save Mood"
+                        android:backgroundTint="@color/green"
+                        android:textColor="@android:color/white"
+                        android:layout_marginBottom="8dp"/>
+
+                    <Button
+                        android:id="@+id/viewTrends"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="View Trends"
+                        android:backgroundTint="@color/red_dark"
+                        android:textColor="@android:color/white"/>
+
+                </LinearLayout>
+
+            </LinearLayout>
+        </ScrollView>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

@@ -115,6 +115,7 @@ dependencies {
     implementation("com.aallam.openai:openai-client:3.8.0")
     implementation("io.ktor:ktor-client-android:2.3.4")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
 
 
 
