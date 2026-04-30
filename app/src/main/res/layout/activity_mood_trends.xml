@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    android:background="@color/beige">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar_mood_trends"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@color/beige"
+        android:title="Mood Trends"
+        android:titleTextColor="@android:color/white"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+
+    <!-- Subtitle -->
+    <TextView
+        android:id="@+id/trendsSubtitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Tap a date to view your mood"
+        android:textSize="14sp"
+        android:textColor="@android:color/darker_gray"
+        android:layout_marginTop="4dp"
+        app:layout_constraintTop_toBottomOf="@id/toolbar_mood_trends"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Calendar -->
+    <CalendarView
+        android:id="@+id/calendarView"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        app:layout_constraintTop_toBottomOf="@id/trendsSubtitle"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Mood Result -->
+    <TextView
+        android:id="@+id/moodText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Select a date"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginTop="24dp"
+        android:textColor="@android:color/black"
+        app:layout_constraintTop_toBottomOf="@id/calendarView"
+        app:layout_constraintStart_toStartOf="parent"/>
+
+    <!-- Optional hint -->
+    <TextView
+        android:id="@+id/moodHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Your mood will appear here"
+        android:textSize="14sp"
+        android:textColor="@android:color/darker_gray"
+        android:layout_marginTop="4dp"
+        app:layout_constraintTop_toBottomOf="@id/moodText"
+        app:layout_constraintStart_toStartOf="parent"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/moodList"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        app:layout_constraintTop_toBottomOf="@id/btnEditMood"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <!-- Mood Log Management Buttons -->
+    <Button
+        android:id="@+id/btnEditMood"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Change Mood"
+        android:backgroundTint="@color/red_dark"
+        android:textColor="@android:color/white"
+        android:layout_marginTop="16dp"
+        app:layout_constraintTop_toBottomOf="@id/moodHint"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/btnRemoveMood"
+        android:layout_weight="1"
+        android:layout_marginEnd="8dp"/>
+    <Button
+        android:id="@+id/btnRemoveMood"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Remove"
+        android:backgroundTint="@android:color/darker_gray"
+        android:textColor="@android:color/white"
+        app:layout_constraintTop_toTopOf="@id/btnEditMood"
+        app:layout_constraintStart_toEndOf="@id/btnEditMood"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_weight="1"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

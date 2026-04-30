@@ -6,6 +6,9 @@ import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.drawerlayout.widget.DrawerLayout
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -19,14 +22,24 @@ class JournalingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_journaling)
 
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.RECORD_AUDIO),
+                100
+            )
+        }
+
         drawerLayout = findViewById(R.id.drawer_layout_journaling)
         val navView: NavigationView = findViewById(R.id.nav_view_journaling)
         val toolbar: MaterialToolbar = findViewById(R.id.toolbar_journaling)
 
-        // Set toolbar as ActionBar
+        val chipGroup: ChipGroup = findViewById(R.id.tagChipGroup)
+        val fab: FloatingActionButton = findViewById(R.id.newJournalFab)
+
         setSupportActionBar(toolbar)
 
-        // Enable burger menu toggle
         val toggle = ActionBarDrawerToggle(
             this,
             drawerLayout,
@@ -38,20 +51,41 @@ class JournalingActivity : AppCompatActivity() {
         toggle.syncState()
 
         // ----------------------------------------------------
-        // LOAD USER DETAILS FROM FIRESTORE (name, email, age, gender)
+        // HARD-CODED JOURNAL TAGS
+        // ----------------------------------------------------
+        val tags = listOf("CBT", "Trauma", "Mindfulness", "Anxiety", "Depression")
+
+        tags.forEach { tag ->
+            val chip = Chip(this).apply {
+                text = tag
+                isCheckable = true
+
+                // Styling to match your theme
+                setTextColor(resources.getColor(android.R.color.white, theme))
+                chipBackgroundColor = resources.getColorStateList(R.color.red_dark, theme)
+            }
+
+            chipGroup.addView(chip)
+        }
+
+        // ----------------------------------------------------
+        // FAB → OPEN NEW JOURNAL ENTRY
+        // ----------------------------------------------------
+        fab.setOnClickListener {
+            val intent = Intent(this, JournalEntryActivity::class.java)
+            startActivity(intent)
+        }
+
+        // ----------------------------------------------------
+        // FIREBASE USER HEADER (unchanged)
         // ----------------------------------------------------
         val user = FirebaseAuth.getInstance().currentUser
         val userId = user?.uid
 
         val headerView = navView.getHeaderView(0)
 
-        // Existing header fields
         val nameTextView = headerView.findViewById<TextView>(R.id.header_profile_name)
         val emailTextView = headerView.findViewById<TextView>(R.id.header_profile_email)
-
-        // Future fields (not in XML yet)
-        // val ageTextView = headerView.findViewById<TextView>(R.id.header_profile_age)
-        // val genderTextView = headerView.findViewById<TextView>(R.id.header_profile_gender)
 
         if (userId != null) {
             FirebaseFirestore.getInstance()
@@ -63,16 +97,9 @@ class JournalingActivity : AppCompatActivity() {
 
                         val name = document.getString("name") ?: "Profile"
                         val email = document.getString("email") ?: user.email ?: "Unknown"
-                        val age = document.getString("age") ?: "Not set"
-                        val gender = document.getString("gender") ?: "Not set"
 
-                        // Set existing header fields
                         nameTextView.text = name
                         emailTextView.text = email
-
-                        // These will work once you add the TextViews
-                        // ageTextView.text = age
-                        // genderTextView.text = gender
                     }
                 }
                 .addOnFailureListener {
@@ -82,7 +109,7 @@ class JournalingActivity : AppCompatActivity() {
         }
 
         // ----------------------------------------------------
-        // HANDLE HEADER CLICK
+        // HEADER CLICK
         // ----------------------------------------------------
         headerView.setOnClickListener {
             startActivity(Intent(this, ProfileActivity::class.java))
@@ -90,7 +117,7 @@ class JournalingActivity : AppCompatActivity() {
         }
 
         // ----------------------------------------------------
-        // HANDLE MENU ITEM CLICKS
+        // NAVIGATION MENU
         // ----------------------------------------------------
         navView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
