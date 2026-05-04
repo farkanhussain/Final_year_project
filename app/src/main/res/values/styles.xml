@@ -40,5 +40,12 @@
         <item name="android:gravity">center</item>
     </style>
 
+    <style name="RedFilledDropdown" parent="Widget.MaterialComponents.TextInputLayout.FilledBox.Dense">
+        <item name="boxBackgroundColor">@color/red_dark</item>
+        <item name="boxStrokeColor">@color/white</item>
+        <item name="hintTextColor">@color/white</item>
+    </style>
+
+
 </resources>
 

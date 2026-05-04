@@ -32,6 +32,8 @@ class TherapyActivity : AppCompatActivity() {
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
 
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_therapy)
@@ -39,6 +41,8 @@ class TherapyActivity : AppCompatActivity() {
         drawerLayout = findViewById(R.id.drawer_layout_therapy)
         val navView: NavigationView = findViewById(R.id.nav_view_therapy)
         val toolbar: MaterialToolbar = findViewById(R.id.toolbar_therapy)
+
+
 
         setSupportActionBar(toolbar)
 
@@ -86,7 +90,7 @@ class TherapyActivity : AppCompatActivity() {
                 R.id.nav_mood_tracking -> startActivity(Intent(this, MoodTrackingActivity::class.java))
                 R.id.nav_journaling -> startActivity(Intent(this, JournalingActivity::class.java))
                 R.id.nav_articles -> startActivity(Intent(this, ArticlesActivity::class.java))
-                R.id.nav_settings -> startActivity(Intent(this, SettingsActivity::class.java))
+
             }
             true
         }
@@ -142,8 +146,10 @@ class TherapyActivity : AppCompatActivity() {
     private fun showManageBottomSheet(sessionId: String) {
         val bottomSheet = ManageSessionBottomSheet(
             sessionId = sessionId,
-            onDeleteSession = { id ->
-                deleteSession(id)
+            onDeleteSession = { id -> deleteSession(id) },
+            onUpdated = {
+                // 🔥 This makes the list update immediately!
+                loadSessionsFromFirestore()
             }
         )
         bottomSheet.show(supportFragmentManager, "ManageSessionBottomSheet")
@@ -211,14 +217,27 @@ class TherapyActivity : AppCompatActivity() {
     }
 
     private fun filterSessions(query: String, tags: List<String>): List<TherapySession> {
+
+        val queryTerms = query
+            .lowercase()
+            .trim()
+            .split("\\s+".toRegex())
+            .filter { it.isNotBlank() }
+
         val filtered = allSessions.filter { session ->
 
-            val matchesQuery =
-                session.tags.any { it.contains(query, ignoreCase = true) } ||
-                        session.messages.any { it.text.contains(query, ignoreCase = true) }
+            val sessionTags = session.tags.map { it.lowercase() }
 
-            val matchesTags = if (tags.isEmpty()) true
-            else tags.any { tag -> session.tags.contains(tag) }
+            // Match search query (tags OR messages)
+            val matchesQuery = queryTerms.isEmpty() || queryTerms.any { term ->
+                sessionTags.any { it.contains(term) } ||
+                        session.messages.any { it.text.contains(term, ignoreCase = true) }
+            }
+
+            // Match selected chips (ANY match)
+            val matchesTags = tags.isEmpty() || tags.any { selectedTag ->
+                sessionTags.any { it == selectedTag.lowercase() }
+            }
 
             matchesQuery && matchesTags
         }
@@ -258,4 +277,6 @@ class TherapyActivity : AppCompatActivity() {
             chipGroup.addView(chip) // if you're using a ChipGroup
         }
     }
+
+
 }

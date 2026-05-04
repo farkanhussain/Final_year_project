@@ -67,6 +67,9 @@ class ChatActivity : AppCompatActivity() {
 
     private var sessionId: String? = null
 
+    private var openedFromInsightsCard = false
+
+
     private var sessionJustLoaded = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,6 +78,10 @@ class ChatActivity : AppCompatActivity() {
         window.setDecorFitsSystemWindows(true)
         setContentView(R.layout.activity_chat)
 
+         openedFromInsightsCard = intent.getBooleanExtra("from_insights_card", false)
+        if (openedFromInsightsCard) {
+            isFirstAiResponse = false
+        }
 
 
         sessionId = intent.getStringExtra("SESSION_ID")
@@ -117,11 +124,44 @@ class ChatActivity : AppCompatActivity() {
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = adapter
 
+        val incomingInsights = intent.getStringArrayListExtra("therapy_insights")
+
+        if (incomingInsights != null && incomingInsights.isNotEmpty()) {
+            incomingInsights.forEach { insight ->
+                addMessage("Therapist Insight: $insight", isUser = false)
+            }
+        }
+
+
+
         if (sessionId != null) {
             loadExistingSession()
-        } else {
+        } else if (!openedFromInsightsCard) {
             addMessage("Hi, I’m here with you. What’s been on your mind today?", isUser = false)
         }
+
+        // Handle physical "Enter" key and keyboard "Send" action
+        messageInput.setOnEditorActionListener { _, actionId, event ->
+            val isEnterKeyDown = event != null &&
+                    event.keyCode == android.view.KeyEvent.KEYCODE_ENTER &&
+                    event.action == android.view.KeyEvent.ACTION_DOWN
+
+            val isSendAction = actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND
+
+            if (isSendAction || isEnterKeyDown) {
+                val userText = messageInput.text.toString()
+                if (userText.isNotBlank()) {
+                    userHasSpoken = true
+                    addMessage(userText, isUser = true)
+                    messageInput.setText("")
+                    processUserMessage(userText)
+                }
+                true // Consume the event
+            } else {
+                false // Pass the event on
+            }
+        }
+
 
         sendButton.setOnClickListener {
             val userText = messageInput.text.toString()
@@ -285,16 +325,37 @@ class ChatActivity : AppCompatActivity() {
     private fun extractSymptomsFromNaturalLanguage(text: String) {
         val lower = text.lowercase()
 
-        // Example symptom keyword groups
-        val sadnessWords = listOf("sad", "down", "low", "depressed", "empty")
-        val anxietyWords = listOf("anxious", "nervous", "on edge", "panic", "worried")
-        val sleepWords = listOf("insomnia", "can't sleep", "sleeping badly", "awake all night")
-        val fatigueWords = listOf("tired", "exhausted", "fatigued", "no energy")
+        // Keyword groups
+        val sadnessWords = listOf("sad", "down", "low", "depressed", "empty", "unhappy")
+        val fatigueWords = listOf("tired", "exhausted", "fatigued", "no energy", "drained")
+        val sleepWords = listOf("insomnia", "can't sleep", "sleeping badly", "awake all night", "tossing and turning")
+        val anxietyWords = listOf("anxious", "nervous", "on edge", "panic", "worried", "scared")
 
+        // New symptom groups
+        val restlessnessWords = listOf("restless", "fidgety", "can't sit still", "agitated", "pacing")
+        val stressedWords = listOf("stressed", "overwhelmed", "pressure", "burnt out", "too much going on")
+        val angerWords = listOf("angry", "annoyed", "irritable", "mad", "frustrated", "pissed", "furious")
+        val socialMediaWords = listOf("doomscrolling", "scrolling", "social media", "instagram", "tiktok", "addicted to my phone")
+        val antisocialWords = listOf("antisocial", "withdrawn", "avoiding people", "isolating", "staying in", "don't want to talk")
+        val selfBlameWords = listOf("my fault", "blaming myself", "i failed", "guilty", "ashamed", "failure")
+        val traumaWords = listOf("nightmare", "bad dream", "flashback", "reliving", "traumatic memory", "can't forget")
+        val overreactingWords = listOf("overreacting", "snapped", "too sensitive", "melt down", "explosive", "volatile")
+        val weightGainWords = listOf("weight gain", "gained weight", "eating more", "heavier", "appetite increased")
+
+        // Mapping to symptomState indices
         if (sadnessWords.any { lower.contains(it) }) symptomState[0] = 1f
         if (fatigueWords.any { lower.contains(it) }) symptomState[1] = 1f
         if (sleepWords.any { lower.contains(it) }) symptomState[2] = 1f
         if (anxietyWords.any { lower.contains(it) }) symptomState[3] = 1f
+        if (restlessnessWords.any { lower.contains(it) }) symptomState[4] = 1f
+        if (stressedWords.any { lower.contains(it) }) symptomState[5] = 1f
+        if (angerWords.any { lower.contains(it) }) symptomState[6] = 1f
+        if (socialMediaWords.any { lower.contains(it) }) symptomState[7] = 1f
+        if (antisocialWords.any { lower.contains(it) }) symptomState[8] = 1f
+        if (selfBlameWords.any { lower.contains(it) }) symptomState[9] = 1f
+        if (traumaWords.any { lower.contains(it) }) symptomState[10] = 1f
+        if (overreactingWords.any { lower.contains(it) }) symptomState[11] = 1f
+        if (weightGainWords.any { lower.contains(it) }) symptomState[12] = 1f
     }
 
 
@@ -317,96 +378,95 @@ class ChatActivity : AppCompatActivity() {
         disorder: String,
         interpretation: String
     ) {
-
         val client = OpenAI(token = openAiKey)
 
-        // ---------------------------------------------------------
-        // SESSION CONTEXT LOGIC (FIXED)
-        // ---------------------------------------------------------
-        val isStartOfSession = isFirstAiResponse && !sessionJustLoaded
+        val isStartOfSession = isFirstAiResponse && !sessionJustLoaded && !openedFromInsightsCard
 
-        val sessionContextNote =
-            if (isStartOfSession) {
-                "This is the FIRST assistant response in a NEW session."
-            } else {
-                "This is a continuing conversation."
-            }
+        val symptomLabels = mapOf(
+            0 to "Sadness/Mood",
+            1 to "Fatigue/Energy",
+            2 to "Sleep issues",
+            3 to "Anxiety/Nervousness",
+            4 to "Restlessness",
+            5 to "Stress levels",
+            6 to "Anger/Irritability",
+            7 to "Social media usage",
+            8 to "Social withdrawal",
+            9 to "Self-blame/Guilt",
+            10 to "Nightmares/Traumatic memories",
+            11 to "Emotional reactivity",
+            12 to "Weight/Appetite changes"
+        )
 
-        val knownSymptoms = symptomState
-            .withIndex()
-            .mapNotNull { (index, value) ->
-                when (value) {
-                    1f -> "symptom_$index"
-                    0.5f -> "possible_symptom_$index"
-                    else -> null
-                }
-            }
+        val symptomsConfirmed = symptomState.withIndex()
+            .filter { it.value == 1f }
+            .map { symptomLabels[it.index] ?: "Symptom_${it.index}" }
             .joinToString(", ")
-            .ifBlank { "none reported yet" }
+            .ifBlank { "None confirmed yet" }
+
+        val knownCount = symptomState.count { it == 1f }
+
+        // Pass the last few messages to help AI avoid repeating itself
+        val recentHistory = messages.takeLast(6).joinToString("\n") {
+            if(it.user) "User: ${it.text}" else "Assistant: ${it.text}"
+        }
 
         val prompt = """
-        Session state: $sessionContextNote
+        [CONTEXT]
+        - Current Emotion: $emotion
+        - Detected Pattern: $disorder
+        - Internal Interpretation: $interpretation
+        - Confirmed Symptoms: $symptomsConfirmed (Total: $knownCount/24)
+        - Session Status: ${if (isStartOfSession) "NEW SESSION" else "CONTINUING"}
+
+        [RECENT CONVERSATION HISTORY]
+        $recentHistory
+
+        [LATEST USER MESSAGE]
+        "$userMessage"
         
-        The user said: "$userMessage"
+  LANGUAGE & CODE-SWITCHING RULE
+  - Detect the user's language and script: English, Urdu (Perso‑Arabic RTL script), or Roman Urdu (LTR).
+  - Preserve and mirror the user's script and direction: 
+    - If the user types in Urdu script, reply in Urdu script and respect right‑to‑left layout.
+    - If the user types in Roman Urdu, reply in Roman Urdu (left‑to‑right) so it mixes naturally with English.
+  - Match the user's linguistic style and code‑switching: if the user mixes English and Urdu, reply using the same mix and preserve English technical terms unchanged.
+  - Only transliterate or convert script when the user explicitly requests it (e.g., "Transliterate to Urdu script").
+  - If detection confidence is low, ask a short clarifying question before generating a full reply.
+  - Label any automatic translations by prepending "[Translated]" to translated text and indicate when transliteration was applied.
+  - If the model replies only in English after detecting Urdu, re‑generate with the explicit instruction "Reply in the user's language" or offer the user a visible toggle to choose response language.
 
-        Emotion detected: $emotion
-        Disorder pattern: $disorder
-        Interpretation: $interpretation
-        Known symptoms so far: $knownSymptoms
 
-        You are a warm, supportive CBT-based mental health assistant.
-        You do NOT diagnose.
-
-        ────────────────────────────
-        🚨 SAFETY OVERRIDE (ABSOLUTE PRIORITY)
-        ────────────────────────────
-        If the user shows ANY indication of:
-        - suicidal thoughts
-        - self-harm
-        - feeling unsafe
-        - severe hopelessness
-
-        YOU MUST:
-        - STOP all other steps immediately
-        - DO NOT ask questions
-        - DO NOT explore
-        - DO NOT continue CBT flow
-        - Respond only with support + resources
-
-        Include:
+        ──────────────────────────────────────────────────────────
+         PHASE 0: SAFETY OVERRIDE (ABSOLUTE PRIORITY)
+        ──────────────────────────────────────────────────────────
+        If suicide, self-harm, or severe hopelessness is mentioned:
+        1. STOP all other tasks. Respond only with empathy + resources in user's language:
         $emergencyContacts
 
-        Keep tone calm, warm, and direct.
+        ──────────────────────────────────────────────────────────
+        PHASE 1: EXPLORATORY SYMPTOM COLLECTION (PRIORITY IF CONFIRMED < 3)
+        ──────────────────────────────────────────────────────────
+        - Validate emotion ($emotion) warmly.
+        - EXPLORATION RULE: Ask ONE follow-up question ONLY if it relates to what the user just said. 
+        - REPETITION GUARD: Check [RECENT CONVERSATION HISTORY]. DO NOT ask about energy or sleep if you already asked in the last 3 turns.
+        - If the user provided a long, detailed message, skip Phase 1 and move to Phase 3 immediately to keep flow fast.
 
-        ────────────────────────────
-        NORMAL RESPONSE (ONLY IF SAFE)
-        ────────────────────────────
+        ──────────────────────────────────────────────────────────
+        PHASE 2: CONVERSATIONAL FLEXIBILITY
+        ──────────────────────────────────────────────────────────
+        - If the user talks about unrelated topics (hobbies, life, general facts), engage warmly and naturally. Do not force therapy talk.
 
-        1. Brief validation (1–2 sentences max)
-        2. Optional reflection (no interrogation)
-        3. Optional CBT intervention (ONE tool only)
-        4. End with gentle autonomy
+        ──────────────────────────────────────────────────────────
+        PHASE 3: REFLECTION & SUPPORT (IF CONFIRMED >= 3 OR HIGH-QUALITY INPUT)
+        ──────────────────────────────────────────────────────────
+        - If you have enough info ($knownCount >= 3) or the user's input is descriptive, provide a gentle reflection based on: $interpretation.
+        - Offer ONE supportive CBT thought or "suggestion to consider."
 
-        RULES:
-        - ONE message only
-        - NEVER diagnose
-        - NEVER ask multiple questions
-        - Safety overrides everything
-
-        ────────────────────────────
-        OPTIONAL START-OF-SESSION SUPPORT
-        ────────────────────────────
-        Only apply if this is the FIRST assistant response in a NEW session.
-
-        You may include ONE short, gentle invitation encouraging the user to share how they are feeling.
-
-        Rules:
-        - Only at session start
-        - One sentence only
-        - Not clinical
-        - Not a checklist
-        - Not multiple questions
-        - Warm and low pressure
+        [RESPONSE RULES]
+        - Be concise to speed up interaction.
+        - Never ask more than ONE question.
+        - Never repeat a question found in [RECENT CONVERSATION HISTORY].
     """.trimIndent()
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -417,39 +477,33 @@ class ChatActivity : AppCompatActivity() {
                         messages = listOf(
                             ChatMessage(
                                 role = ChatRole.System,
-                                content = "You are a supportive CBT assistant."
+                                content = "You are a warm, multilingual Therapy Assistant. You are concise, avoid repetition, and mirror the user's language (English/Urdu)."
                             ),
                             ChatMessage(
                                 role = ChatRole.User,
                                 content = prompt
                             )
-                        )
+                        ),
+                        temperature = 0.7
                     )
                 )
 
-                val aiReply =
-                    response.choices.first().message?.content ?: "I'm here with you."
+                val aiReply = response.choices.first().message?.content ?: "I'm here with you."
 
                 runOnUiThread {
                     addMessage(aiReply, isUser = false)
-
-                    // ---------------------------------------------------------
-                    // UPDATE SESSION STATE FLAGS (IMPORTANT FIX)
-                    // ---------------------------------------------------------
-                    if (isFirstAiResponse) {
-                        isFirstAiResponse = false
-                    }
-
+                    if (isFirstAiResponse) isFirstAiResponse = false
                     sessionJustLoaded = false
                 }
 
             } catch (e: Exception) {
                 runOnUiThread {
-                    addMessage("Error: ${e.message}", isUser = false)
+                    addMessage("I'm listening, but having some connection trouble. Could you say that again?", isUser = false)
                 }
             }
         }
     }
+
 
 
     // ---------------------------------------------------------

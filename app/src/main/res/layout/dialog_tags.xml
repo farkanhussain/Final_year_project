@@ -74,7 +74,7 @@
             android:layout_marginTop="24dp"
             android:text="Save"
             android:textColor="@color/white"
-            android:backgroundTint="@color/red_dark"
+            android:backgroundTint="@color/green"
             app:rippleColor="@color/red"
             app:cornerRadius="12dp"
             style="@style/Widget.MaterialComponents.Button" />

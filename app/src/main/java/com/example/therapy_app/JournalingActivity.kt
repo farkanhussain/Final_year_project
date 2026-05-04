@@ -13,8 +13,17 @@ import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import android.widget.TextView
+import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.textfield.TextInputEditText
+import androidx.core.widget.addTextChangedListener
+
 
 class JournalingActivity : AppCompatActivity() {
+
+    private lateinit var journalAdapter: JournalAdapter
+
+    private var allEntries: List<JournalEntry> = emptyList()
 
     private lateinit var drawerLayout: DrawerLayout
 
@@ -50,35 +59,61 @@ class JournalingActivity : AppCompatActivity() {
         drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
 
-        // ----------------------------------------------------
+        // -------------------------------
         // HARD-CODED JOURNAL TAGS
-        // ----------------------------------------------------
-        val tags = listOf("CBT", "Trauma", "Mindfulness", "Anxiety", "Depression")
+        // -------------------------------
+        val tags = listOf(
+            "Gratitude", "Reflection", "Goals",
+            "Mindfulness", "stress", "daily"
+        )
 
         tags.forEach { tag ->
             val chip = Chip(this).apply {
                 text = tag
                 isCheckable = true
-
-                // Styling to match your theme
                 setTextColor(resources.getColor(android.R.color.white, theme))
                 chipBackgroundColor = resources.getColorStateList(R.color.red_dark, theme)
+            }
+
+
+            chip.setOnCheckedChangeListener { _, _ ->
+                applyFilters()
             }
 
             chipGroup.addView(chip)
         }
 
-        // ----------------------------------------------------
-        // FAB → OPEN NEW JOURNAL ENTRY
-        // ----------------------------------------------------
+        // -------------------------------
+        // FAB → NEW ENTRY
+        // -------------------------------
         fab.setOnClickListener {
-            val intent = Intent(this, JournalEntryActivity::class.java)
-            startActivity(intent)
+            startActivity(Intent(this, JournalEntryActivity::class.java))
         }
 
-        // ----------------------------------------------------
-        // FIREBASE USER HEADER (unchanged)
-        // ----------------------------------------------------
+        val recyclerView = findViewById<RecyclerView>(R.id.journalRecyclerView)
+        recyclerView.layoutManager = LinearLayoutManager(this)
+
+        val searchInput = findViewById<TextInputEditText>(R.id.searchInput)
+
+        searchInput.addTextChangedListener {
+            applyFilters()
+        }
+
+
+
+// ✅ CREATE ADAPTER ONCE HERE
+        journalAdapter = JournalAdapter(emptyList()) { entry ->
+            openBottomSheet(entry, recyclerView)
+        }
+
+        recyclerView.adapter = journalAdapter
+
+// THEN load data
+        loadJournalEntries(recyclerView)
+
+        // -------------------------------
+        // HEADER USER INFO
+        // -------------------------------
         val user = FirebaseAuth.getInstance().currentUser
         val userId = user?.uid
 
@@ -94,47 +129,160 @@ class JournalingActivity : AppCompatActivity() {
                 .get()
                 .addOnSuccessListener { document ->
                     if (document.exists()) {
-
-                        val name = document.getString("name") ?: "Profile"
-                        val email = document.getString("email") ?: user.email ?: "Unknown"
-
-                        nameTextView.text = name
-                        emailTextView.text = email
+                        nameTextView.text = document.getString("name") ?: "Profile"
+                        emailTextView.text = document.getString("email") ?: user.email ?: "Unknown"
                     }
-                }
-                .addOnFailureListener {
-                    nameTextView.text = "Profile"
-                    emailTextView.text = user?.email ?: "Unknown"
                 }
         }
 
-        // ----------------------------------------------------
-        // HEADER CLICK
-        // ----------------------------------------------------
         headerView.setOnClickListener {
             startActivity(Intent(this, ProfileActivity::class.java))
             drawerLayout.closeDrawers()
         }
 
-        // ----------------------------------------------------
-        // NAVIGATION MENU
-        // ----------------------------------------------------
+        // -------------------------------
+        // NAV MENU
+        // -------------------------------
         navView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
 
                 R.id.nav_home -> startActivity(Intent(this, MainActivity::class.java))
-
                 R.id.nav_therapy -> startActivity(Intent(this, TherapyActivity::class.java))
-
                 R.id.nav_journaling -> startActivity(Intent(this, JournalingActivity::class.java))
-
-                R.id.nav_mood_tracking -> startActivity(Intent(this, MoodTrackingActivity::class.java))
+                R.id.nav_mood_tracking -> startActivity(
+                    Intent(
+                        this,
+                        MoodTrackingActivity::class.java
+                    )
+                )
 
                 R.id.nav_articles -> startActivity(Intent(this, ArticlesActivity::class.java))
 
-                R.id.nav_settings -> startActivity(Intent(this, SettingsActivity::class.java))
             }
             true
         }
     }
+
+    // =====================================================
+    // LOAD JOURNAL ENTRIES
+    // =====================================================
+    private fun loadJournalEntries(recyclerView: RecyclerView) {
+
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+
+        FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(userId)
+            .collection("journal_entries")
+            .orderBy("timestamp")
+            .get()
+            .addOnSuccessListener { result ->
+
+                val entries = result.documents.map { doc ->
+
+                    val rawTags = doc.get("tags")
+
+                    val tags = when (rawTags) {
+                        is List<*> -> rawTags.mapNotNull { it?.toString() }
+                        else -> emptyList()
+                    }
+
+                    JournalEntry(
+                        id = doc.id,
+                        title = doc.getString("title") ?: "",
+                        content = doc.getString("content") ?: "",
+                        mood = doc.getString("mood"),
+                        timestamp = doc.getLong("timestamp") ?: 0,
+                        tags = tags
+                    )
+                }
+
+                allEntries = entries
+                journalAdapter.updateList(entries)
+            }
+    }
+
+
+    override fun onResume() {
+        super.onResume()
+        val recyclerView = findViewById<RecyclerView>(R.id.journalRecyclerView)
+        loadJournalEntries(recyclerView)
+    }
+
+        // =====================================================
+        // DELETE ENTRY (LOCAL UI UPDATE)
+        // =====================================================
+        private fun deleteEntryFromList(entry: JournalEntry, recyclerView: RecyclerView) {
+
+            val currentList = journalAdapter.entries.toMutableList()
+
+            val index = currentList.indexOfFirst { it.id == entry.id }
+
+            if (index != -1) {
+
+                currentList.removeAt(index)
+
+                journalAdapter = JournalAdapter(currentList) { selected ->
+
+                    val bottomSheet = ManageJournalEntryBottomSheet(
+                        entryId = selected.id,
+                        onDeleteEntry = {
+                            deleteEntryFromList(selected, recyclerView)
+                        }
+                    )
+
+                    bottomSheet.show(supportFragmentManager, "JournalSheet")
+                }
+
+                recyclerView.adapter = journalAdapter
+            }
+        }
+
+    private fun openBottomSheet(entry: JournalEntry, recyclerView: RecyclerView) {
+
+        val bottomSheet = ManageJournalEntryBottomSheet(
+            entryId = entry.id,
+            onDeleteEntry = {
+                loadJournalEntries(recyclerView)
+            },
+            onUpdated = {
+                recyclerView.post {
+                    loadJournalEntries(recyclerView)
+                }
+            }
+        )
+
+        bottomSheet.show(supportFragmentManager, "JournalSheet")
+    }
+
+    private fun applyFilters() {
+
+        val searchInput = findViewById<TextInputEditText>(R.id.searchInput)
+        val chipGroup = findViewById<ChipGroup>(R.id.tagChipGroup)
+
+        val query = searchInput.text.toString().trim().lowercase()
+
+        // Collect selected tags
+        val selectedTags = mutableListOf<String>()
+        for (i in 0 until chipGroup.childCount) {
+            val chip = chipGroup.getChildAt(i) as Chip
+            if (chip.isChecked) selectedTags.add(chip.text.toString())
+        }
+
+        // Filter logic
+        val filtered = allEntries.filter { entry ->
+
+            val matchesSearch =
+                entry.title.lowercase().contains(query) ||
+                        entry.content.lowercase().contains(query)
+
+            val matchesTags =
+                selectedTags.isEmpty() || entry.tags.any { it in selectedTags }
+
+            matchesSearch && matchesTags
+        }
+
+        journalAdapter.updateList(filtered)
+    }
+
 }

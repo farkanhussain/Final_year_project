@@ -40,7 +40,7 @@ class LoginActivity : AppCompatActivity() {
         val registerBtn = findViewById<Button>(R.id.btnRegister)
         val rememberMeCheckBox = findViewById<CheckBox>(R.id.rememberMeCheckBox)
 
-        // 🔥 Auto‑fill saved login details (but do NOT auto‑login)
+        //  Auto‑fill saved login details (but do NOT auto‑login)
         val savedEmail = prefs.getString("savedEmail", "")
         val savedPassword = prefs.getString("savedPassword", "")
         val rememberMe = prefs.getBoolean("rememberMe", false)

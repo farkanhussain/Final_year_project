@@ -36,7 +36,7 @@
             android:textStyle="bold"
             android:paddingTop="20dp"
             android:textSize="16sp"
-            android:textColor="@color/white" />
+            android:textColor="@color/black" />
 
         <!-- ChipGroup -->
         <com.google.android.material.chip.ChipGroup
@@ -75,7 +75,7 @@
             android:text="Save Entry"
             android:textColor="@color/white"
             android:backgroundTint="@color/green"
-            app:rippleColor="@color/red"
+            app:rippleColor="@color/light_green"
             app:cornerRadius="12dp"
             style="@style/Widget.MaterialComponents.Button" />
 

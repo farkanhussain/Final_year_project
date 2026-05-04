@@ -13,7 +13,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:title="New Entry"
-        app:navigationIcon="@drawable/back_arrow"
+
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
@@ -60,7 +60,7 @@
                 android:id="@+id/journalText"
                 android:layout_width="match_parent"
                 android:layout_height="220dp"
-                android:background="@null"
+                android:background="@color/white"
                 android:gravity="top"
                 android:hint="Start writing your thoughts..."
                 android:textColor="@android:color/black"

@@ -21,7 +21,8 @@ import com.google.firebase.auth.FirebaseAuth
 
 class ManageSessionBottomSheet(
     private val sessionId: String,
-    private val onDeleteSession: (String) -> Unit
+    private val onDeleteSession: (String) -> Unit,
+    private val onUpdated: () -> Unit
 ) : BottomSheetDialogFragment() {
 
     override fun onCreateView(
@@ -51,17 +52,9 @@ class ManageSessionBottomSheet(
         }
     }
 
-    // -------------------------------
-    // LOAD SESSION
-    // -------------------------------
     private fun loadSessionAndOpenDialog() {
         val db = FirebaseFirestore.getInstance()
-        val userId = FirebaseAuth.getInstance().currentUser?.uid
-
-        if (userId == null) {
-            Toast.makeText(requireContext(), "User not logged in", Toast.LENGTH_SHORT).show()
-            return
-        }
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
 
         db.collection("users")
             .document(userId)
@@ -69,13 +62,13 @@ class ManageSessionBottomSheet(
             .document(sessionId)
             .get()
             .addOnSuccessListener { document ->
-
                 if (document.exists()) {
                     val title = document.getString("title") ?: ""
-
                     val tagsList = document.get("tags") as? List<*>
+
+                    // 🔥 FIX: Normalize all tags to lowercase when loading
                     val tagsSet = tagsList
-                        ?.mapNotNull { it?.toString() }
+                        ?.mapNotNull { it?.toString()?.lowercase()?.trim() }
                         ?.toMutableSet()
                         ?: mutableSetOf()
 
@@ -83,222 +76,130 @@ class ManageSessionBottomSheet(
                         currentTitle = title,
                         existingTags = tagsSet
                     )
-                } else {
-                    Toast.makeText(requireContext(), "Session not found", Toast.LENGTH_SHORT).show()
                 }
-            }
-            .addOnFailureListener { e ->
-                e.printStackTrace()
-                Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_LONG).show()
             }
     }
 
-    // -------------------------------
-    // TAG + TITLE DIALOG
-    // -------------------------------
     private fun openManageTagsDialog(
         currentTitle: String,
         existingTags: MutableSet<String>
     ) {
-        val view = LayoutInflater.from(requireContext())
-            .inflate(R.layout.dialog_tags, null)
-
+        val view = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_tags, null)
         val titleInput = view.findViewById<TextInputEditText>(R.id.titleInput)
         val chipGroup = view.findViewById<ChipGroup>(R.id.tagChipGroup)
         val customInput = view.findViewById<TextInputEditText>(R.id.customTagInput)
         val saveButton = view.findViewById<MaterialButton>(R.id.saveTagsButton)
 
-        val hardcodedTags = listOf(
-            "anxiety",
-            "depression",
-            "mindfulness",
-            "trauma",
-            "CBT"
-        )
-
+        // Standardized lowercase list
+        val hardcodedTags = listOf("anxiety", "depression", "mindfulness", "trauma", "cbt")
         titleInput.setText(currentTitle)
 
-        // -------------------------------
-        // CHIP FACTORY (FIXED + MATERIAL RIPPLE ENABLED)
-        // -------------------------------
         fun createChip(text: String, isChecked: Boolean = false): Chip {
             return Chip(requireContext()).apply {
                 this.text = text
-                isCheckable = true
+                this.isCheckable = true
                 this.isChecked = isChecked
-                isClickable = true
-
-                // Background selector (red_dark ↔ red)
                 setChipBackgroundColorResource(R.color.red_dark)
-
-                // Text
-                setTextColor(
-                    ContextCompat.getColor(requireContext(), R.color.white)
-                )
-
-                // Stroke
-                chipStrokeColor = ContextCompat.getColorStateList(
-                    requireContext(),
-                    R.color.red_dark
-                )
-                chipStrokeWidth = 1f
-
-                // IMPORTANT:
-                // DO NOT override rippleColor → enables native Material ripple (red flash if theme allows)
-
-                rippleColor = ColorStateList.valueOf(
-                    Color.parseColor("#8B0000")
-                )
-
-
+                setTextColor(ContextCompat.getColor(requireContext(), R.color.white))
+                rippleColor = ColorStateList.valueOf(Color.parseColor("#8B0000"))
             }
         }
 
-        // -------------------------------
-        // HARD CODED TAGS
-        // -------------------------------
+        // 1. HARDCODED TAGS: Case-insensitive match check
         hardcodedTags.forEach { tag ->
-            val chip = createChip(tag, existingTags.contains(tag))
+            val match = existingTags.contains(tag.lowercase())
+            val chip = createChip(tag, match)
 
-            chip.setOnCheckedChangeListener { _, isChecked ->
-                if (isChecked) existingTags.add(tag)
-                else existingTags.remove(tag)
+            chip.setOnCheckedChangeListener { _, checked ->
+                if (checked) existingTags.add(tag.lowercase())
+                else existingTags.remove(tag.lowercase())
             }
-
             chipGroup.addView(chip)
         }
 
-        // -------------------------------
-        // CUSTOM TAGS (existing)
-        // -------------------------------
-        val customTags = existingTags.filter { tag ->
-            hardcodedTags.none { it.equals(tag, ignoreCase = true) }
-        }
-
-        customTags.forEach { tag ->
+        // 2. CUSTOM TAGS: Display existing tags not in the hardcoded list
+        existingTags.filter { it !in hardcodedTags }.forEach { tag ->
             val chip = createChip(tag, true).apply {
                 isCloseIconVisible = true
-
                 setOnCloseIconClickListener {
                     existingTags.remove(tag)
                     chipGroup.removeView(this)
                 }
             }
-
             chipGroup.addView(chip)
         }
 
-        // -------------------------------
-        // ADD NEW CUSTOM TAG
-        // -------------------------------
+        // 3. PRE-CREATE DIALOG so saveButton can reference it
+        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+            .setView(view)
+            .create()
+
+        // 4. ADD NEW CUSTOM TAG
         customInput.setOnEditorActionListener { _, _, _ ->
-            val text = customInput.text.toString().trim()
-
-            if (text.isNotEmpty() &&
-                existingTags.none { it.equals(text, ignoreCase = true) }) {
-
+            val text = customInput.text.toString().trim().lowercase()
+            if (text.isNotEmpty() && !existingTags.contains(text)) {
                 val chip = createChip(text, true).apply {
                     isCloseIconVisible = true
-
                     setOnCloseIconClickListener {
                         existingTags.remove(text)
                         chipGroup.removeView(this)
                     }
                 }
-
                 chipGroup.addView(chip)
                 existingTags.add(text)
                 customInput.text?.clear()
             }
-
             true
         }
 
-        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
-            .setView(view)
-            .create()
-
-        // -------------------------------
-        // SAVE
-        // -------------------------------
+        // 5. SAVE BUTTON: Correctly updates Firebase
         saveButton.setOnClickListener {
-
-            val userId = FirebaseAuth.getInstance().currentUser?.uid
-
-            if (userId == null) {
-                Toast.makeText(requireContext(), "User not logged in", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
+            val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return@setOnClickListener
             val updatedTitle = titleInput.text.toString().trim()
 
             if (updatedTitle.isEmpty()) {
-                Toast.makeText(requireContext(), "Title cannot be empty", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "Title required", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            val pendingText = customInput.text.toString().trim().lowercase()
 
-            val cleanedTags = existingTags
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .associateBy { it.lowercase() }
-                .values
-                .toSet()
+            if (pendingText.isNotEmpty() && !existingTags.contains(pendingText)) {
+                existingTags.add(pendingText)
+            }
 
-            val db = FirebaseFirestore.getInstance()
-
-            val updatedData = hashMapOf(
+            val updatedData = mapOf(
                 "title" to updatedTitle,
-                "tags" to cleanedTags.toList()
+                "tags" to existingTags.toList()
             )
 
-            db.collection("users")
+            FirebaseFirestore.getInstance().collection("users")
                 .document(userId)
                 .collection("sessions")
                 .document(sessionId)
-                .update(updatedData as Map<String, Any>)
+                .set(updatedData, com.google.firebase.firestore.SetOptions.merge())
                 .addOnSuccessListener {
                     Toast.makeText(requireContext(), "Session updated", Toast.LENGTH_SHORT).show()
-                    dialog.dismiss()
+                    onUpdated()      // Refresh TherapyActivity
+                    dialog.dismiss()  // Close edit dialog
+                    dismiss()         // Close bottom sheet
                 }
                 .addOnFailureListener { e ->
-                    e.printStackTrace()
-                    Toast.makeText(requireContext(), "Update failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(requireContext(), "Update failed: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
         }
 
         dialog.show()
     }
 
-    // -------------------------------
-    // DELETE CONFIRMATION
-    // -------------------------------
     private fun showDeleteConfirmation() {
-        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
             .setTitle("Delete Session")
-            .setMessage("Are you sure you want to delete this session? This action cannot be undone.")
+            .setMessage("Are you sure?")
             .setPositiveButton("Delete") { _, _ ->
-
                 onDeleteSession(sessionId)
-
-                Toast.makeText(
-                    requireContext(),
-                    "Session deleted successfully",
-                    Toast.LENGTH_SHORT
-                ).show()
-
                 dismiss()
             }
             .setNegativeButton("Cancel", null)
-            .create()
-
-        dialog.show()
-
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(
-            resources.getColor(android.R.color.holo_red_dark, null)
-        )
-
-        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(
-            resources.getColor(android.R.color.black, null)
-        )
+            .show()
     }
 }

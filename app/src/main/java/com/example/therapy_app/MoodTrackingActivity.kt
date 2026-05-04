@@ -169,7 +169,7 @@ class MoodTrackingActivity : AppCompatActivity() {
                 R.id.nav_mood_tracking -> startActivity(Intent(this, MoodTrackingActivity::class.java))
                 R.id.nav_journaling -> startActivity(Intent(this, JournalingActivity::class.java))
                 R.id.nav_articles -> startActivity(Intent(this, ArticlesActivity::class.java))
-                R.id.nav_settings -> startActivity(Intent(this, SettingsActivity::class.java))
+
             }
             true
         }

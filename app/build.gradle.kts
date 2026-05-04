@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.google.services)
     alias(libs.plugins.kotlin.compose)
+    id("kotlin-kapt")
 }
 
 android {
@@ -116,7 +117,8 @@ dependencies {
     implementation("io.ktor:ktor-client-android:2.3.4")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
-
+    implementation(libs.glide)
+    kapt(libs.glide.compiler)
 
 
 
