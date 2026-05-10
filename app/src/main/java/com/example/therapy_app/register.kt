@@ -29,6 +29,9 @@ class RegisterActivity : AppCompatActivity() {
         auth = FirebaseAuth.getInstance()
 
 
+
+
+
         val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
 
         val prefs = EncryptedSharedPreferences.create(
@@ -70,6 +73,20 @@ class RegisterActivity : AppCompatActivity() {
         )
         genderDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_list_item_1, genderOptions))
 
+        // ⭐ Restore fields if coming back from EmailVerificationActivity
+        val restoredName = intent.getStringExtra("name")
+        val restoredAge = intent.getStringExtra("age")
+        val restoredGender = intent.getStringExtra("gender")
+        val restoredEmail = intent.getStringExtra("email")
+        val restoredPassword = intent.getStringExtra("password")
+
+        if (!restoredName.isNullOrEmpty()) nameEditText.setText(restoredName)
+        if (!restoredAge.isNullOrEmpty()) ageDropdown.setText(restoredAge, false)
+        if (!restoredGender.isNullOrEmpty()) genderDropdown.setText(restoredGender, false)
+        if (!restoredEmail.isNullOrEmpty()) emailEditText.setText(restoredEmail)
+        if (!restoredPassword.isNullOrEmpty()) passwordEditText.setText(restoredPassword)
+
+
         registerButton.setOnClickListener {
             val name = nameEditText.text.toString().trim()
             val age = ageDropdown.text.toString().trim()
@@ -98,50 +115,35 @@ class RegisterActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            registerUser(name, age, gender, email, password)
-        }
-    }
+            // ⭐ Create Firebase user directly (old behaviour restored)
+            auth.createUserWithEmailAndPassword(email, password)
+                .addOnSuccessListener {
 
-    private fun registerUser(name: String, age: String, gender: String, email: String, password: String) {
+                    // ⭐ Send verification email
+                    auth.currentUser?.sendEmailVerification()
 
-        auth.createUserWithEmailAndPassword(email, password)
-            .addOnCompleteListener(this) { task ->
-                if (task.isSuccessful) {
-
-                    val userId = auth.currentUser?.uid
-                    if (userId != null) {
-                        val userData = mapOf(
-                            "name" to name,
-                            "age" to age,
-                            "gender" to gender,
-                            "email" to email
-                        )
-
-                        FirebaseFirestore.getInstance()
-                            .collection("users")
-                            .document(userId)
-                            .set(userData)
-                            .addOnSuccessListener {
-                                Toast.makeText(this, "Registration Successful", Toast.LENGTH_SHORT).show()
-
-                                val intent = Intent(this, MFAEnrollmentActivity::class.java)
-                                startActivity(intent)
-                                finish()
-                            }
-                            .addOnFailureListener { e ->
-                                Toast.makeText(this, "Failed to save user data: ${e.message}", Toast.LENGTH_LONG).show()
-                            }
-                    }
-
-                } else {
-                    Toast.makeText(
-                        this,
-                        "Registration Failed: ${task.exception?.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    // ⭐ Move to verification screen with user details
+                    val intent = Intent(this, EmailVerificationActivity::class.java)
+                    intent.putExtra("name", name)
+                    intent.putExtra("age", age)
+                    intent.putExtra("gender", gender)
+                    intent.putExtra("email", email)
+                    intent.putExtra("password", password)
+                    startActivity(intent)
                 }
-            }
+                .addOnFailureListener {
+                    Toast.makeText(this, "Registration failed: ${it.message}", Toast.LENGTH_LONG).show()
+                }
+        }
+
+
+
     }
+
+
+
+
+
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == android.R.id.home) {
@@ -150,5 +152,7 @@ class RegisterActivity : AppCompatActivity() {
         }
         return super.onOptionsItemSelected(item)
     }
+
+
 }
 

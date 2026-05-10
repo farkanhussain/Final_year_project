@@ -16,6 +16,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.aallam.openai.api.chat.*
 import com.aallam.openai.api.model.ModelId
 import com.aallam.openai.client.OpenAI
+import com.google.firebase.firestore.Query
 import kotlinx.coroutines.*
 
 class MainActivity : AppCompatActivity() {
@@ -26,6 +27,11 @@ class MainActivity : AppCompatActivity() {
     private var latestPrompts: List<String> = emptyList()
 
     private var latestInsights: List<String> = emptyList()
+
+    // Add this at the top of your Activity
+
+
+
 
 
     private var selectedMood: String? = null   // optional, safe default
@@ -131,6 +137,8 @@ class MainActivity : AppCompatActivity() {
 
 
 
+
+
     }
 
     // ====================================================
@@ -151,6 +159,8 @@ class MainActivity : AppCompatActivity() {
             .collection("users")
             .document(userId)
             .collection("sessions")
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .limit(8)
             .get()
             .addOnSuccessListener { result ->
 
@@ -165,7 +175,9 @@ class MainActivity : AppCompatActivity() {
             .addOnFailureListener {
                 showFallbackPrompts(container)
             }
+
     }
+
 
     // ====================================================
     // 🧠 GENERATE PROMPTS USING OPENAI
@@ -391,6 +403,20 @@ $sessionText
 
         val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
         val insightsContainer = findViewById<LinearLayout>(R.id.homeTherapyInsightsContainer)
+
+        //  If therapist messages are already cached, skip Firestore entirely
+        TherapyCache.cachedTherapistMessages?.let { cached ->
+            val combined = cached.joinToString("\n")
+
+            callOpenAIInsights(combined) { insights ->
+                latestInsights = insights
+                insightsContainer.removeAllViews()
+                insights.forEach { insightsContainer.addView(createInsightView(it)) }
+            }
+            return
+        }
+
+        // Clear UI once at the start
         insightsContainer.removeAllViews()
 
         FirebaseFirestore.getInstance()
@@ -400,11 +426,13 @@ $sessionText
             .get()
             .addOnSuccessListener { result ->
 
-                // Extract therapist-only messages
+                // 2️⃣ Extract therapist-only messages efficiently
                 val therapistMessages = result.documents.flatMap { doc ->
                     val messages = doc.get("messages") as? List<Map<String, Any>> ?: emptyList()
-                    messages.filter { msg -> msg["user"] == false }
+                    messages.asSequence()
+                        .filter { msg -> msg["user"] == false }
                         .map { msg -> msg["text"] as? String ?: "" }
+                        .toList()
                 }
 
                 if (therapistMessages.isEmpty()) {
@@ -414,20 +442,21 @@ $sessionText
                     return@addOnSuccessListener
                 }
 
+                // 3️⃣ Cache messages globally for next time
+                TherapyCache.cachedTherapistMessages = therapistMessages
+
                 val combined = therapistMessages.joinToString("\n")
 
-                //  Call OpenAI to summarise insights
+                // 4️⃣ Call OpenAI once and update UI
                 callOpenAIInsights(combined) { insights ->
-
-                    //  SAVE INSIGHTS so they can be passed to ChatActivity
                     latestInsights = insights
-
-                    //  Display insights in the dashboard
                     insightsContainer.removeAllViews()
                     insights.forEach { insightsContainer.addView(createInsightView(it)) }
                 }
             }
     }
+
+
 
 
     private fun callOpenAIInsights(
@@ -445,10 +474,9 @@ $sessionText
                             ChatMessage(
                                 role = ChatRole.System,
                                 content = """
-You are a therapeutic assistant. Summarise the key advice given to the user across these therapy sessions.
-
-Return exactly 3 short bullet points.
-Avoid clinical language. Keep it warm and human.
+You are a supportive therapeutic assistant.
+Summarise the therapist’s guidance into exactly 3 short, warm bullet points.
+Use simple language. No clinical terms. No long sentences.
 """.trimIndent()
                             ),
                             ChatMessage(
@@ -477,6 +505,7 @@ Avoid clinical language. Keep it warm and human.
     }
 
 
+
     private fun createInsightView(text: String): View {
         val tv = TextView(this)
         tv.text = "• $text"
@@ -485,6 +514,28 @@ Avoid clinical language. Keep it warm and human.
         tv.setPadding(0, 6, 0, 6)
         return tv
     }
+
+    private fun refreshInsightsFromCache() {
+        val insightsContainer = findViewById<LinearLayout>(R.id.homeTherapyInsightsContainer)
+
+        // If no cache exists, fall back to full load
+        val cached = TherapyCache.cachedTherapistMessages ?: return loadTherapyInsights()
+
+        val combined = cached.joinToString("\n")
+
+        callOpenAIInsights(combined) { insights ->
+            latestInsights = insights
+            insightsContainer.removeAllViews()
+            insights.forEach { insightsContainer.addView(createInsightView(it)) }
+        }
+    }
+
+
+    override fun onResume() {
+        super.onResume()
+        refreshInsightsFromCache()   // 🔥 Regenerate insights using cached messages
+    }
+
 
 
 

@@ -3,6 +3,7 @@ package com.example.therapy_app
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.util.Patterns
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -23,7 +24,7 @@ class LoginActivity : AppCompatActivity() {
 
         auth = FirebaseAuth.getInstance()
 
-        // 🔐 Create secure encrypted SharedPreferences
+        // 🔐 Secure encrypted SharedPreferences
         val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
 
         val prefs = EncryptedSharedPreferences.create(
@@ -40,12 +41,10 @@ class LoginActivity : AppCompatActivity() {
         val registerBtn = findViewById<Button>(R.id.btnRegister)
         val rememberMeCheckBox = findViewById<CheckBox>(R.id.rememberMeCheckBox)
 
-        //  Auto‑fill saved login details (but do NOT auto‑login)
+        // Auto-fill saved login details
         val savedEmail = prefs.getString("savedEmail", "")
         val savedPassword = prefs.getString("savedPassword", "")
         val rememberMe = prefs.getBoolean("rememberMe", false)
-
-
 
         if (rememberMe) {
             email.setText(savedEmail)
@@ -57,9 +56,28 @@ class LoginActivity : AppCompatActivity() {
             val emailText = email.text.toString().trim()
             val passwordText = password.text.toString().trim()
 
-            if (emailText.isEmpty() || passwordText.isEmpty()) {
-                Toast.makeText(this, "Please enter email and password", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+            // 🔍 Input validation
+            when {
+                emailText.isEmpty() -> {
+                    email.error = "Email is required"
+                    return@setOnClickListener
+                }
+
+                !Patterns.EMAIL_ADDRESS.matcher(emailText).matches() ||
+                        !emailText.contains("@") -> {
+                    email.error = "Enter a valid email address"
+                    return@setOnClickListener
+                }
+
+                passwordText.isEmpty() -> {
+                    password.error = "Password is required"
+                    return@setOnClickListener
+                }
+
+                passwordText.length < 6 -> {
+                    password.error = "Password must be at least 6 characters"
+                    return@setOnClickListener
+                }
             }
 
             loginUser(emailText, passwordText, rememberMeCheckBox.isChecked, prefs)
@@ -80,7 +98,6 @@ class LoginActivity : AppCompatActivity() {
         auth.signInWithEmailAndPassword(email, password)
             .addOnSuccessListener {
 
-
                 // 🔐 Save login info securely only if Remember Me is checked
                 if (rememberMe) {
                     prefs.edit().apply {
@@ -89,8 +106,6 @@ class LoginActivity : AppCompatActivity() {
                         putBoolean("rememberMe", true)
                         apply()
                     }
-
-
                 } else {
                     prefs.edit().clear().apply()
                 }
@@ -100,18 +115,34 @@ class LoginActivity : AppCompatActivity() {
                 finish()
             }
             .addOnFailureListener { e ->
-                if (e is FirebaseAuthMultiFactorException) {
-                    val intent = Intent(this, MfaSignInActivity::class.java)
-                    intent.putExtra("resolver", e.resolver)
-                    intent.putExtra("email", email)
-                    intent.putExtra("password", password)
-                    intent.putExtra("rememberMe", rememberMe)
-                    startActivity(intent)
-                } else {
-                    Toast.makeText(this, "Login Failed: ${e.message}", Toast.LENGTH_LONG).show()
+
+                when (e) {
+                    is FirebaseAuthMultiFactorException -> {
+                        val intent = Intent(this, MfaSignInActivity::class.java)
+                        intent.putExtra("resolver", e.resolver)
+                        intent.putExtra("email", email)
+                        intent.putExtra("password", password)
+                        intent.putExtra("rememberMe", rememberMe)
+                        startActivity(intent)
+                    }
+
+                    else -> {
+                        val message = when {
+                            e.message?.contains("password") == true ->
+                                "Incorrect password"
+
+                            e.message?.contains("no user record") == true ->
+                                "No account found with this email"
+
+                            e.message?.contains("network") == true ->
+                                "Network error. Check your connection"
+
+                            else -> "Login Failed: ${e.message}"
+                        }
+
+                        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                    }
                 }
             }
     }
 }
-
-

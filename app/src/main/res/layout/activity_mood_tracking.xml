@@ -366,20 +366,20 @@
                     android:orientation="vertical">
 
                     <Button
-                        android:id="@+id/goToJournal"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Write Journal Entry"
-                        android:backgroundTint="@color/red_dark"
-                        android:textColor="@android:color/white"
-                        android:layout_marginBottom="8dp"/>
-
-                    <Button
                         android:id="@+id/submitMood"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="Save Mood"
                         android:backgroundTint="@color/green"
+                        android:textColor="@android:color/white"
+                        android:layout_marginBottom="8dp"/>
+
+                    <Button
+                        android:id="@+id/goToJournal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Write Journal Entry"
+                        android:backgroundTint="@color/red_dark"
                         android:textColor="@android:color/white"
                         android:layout_marginBottom="8dp"/>
 
@@ -390,6 +390,7 @@
                         android:text="View Trends"
                         android:backgroundTint="@color/red_dark"
                         android:textColor="@android:color/white"/>
+
 
                 </LinearLayout>
 

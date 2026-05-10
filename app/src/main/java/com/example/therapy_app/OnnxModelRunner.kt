@@ -46,12 +46,20 @@ class OnnxModelRunner(private val context: Context) {
 
 
     fun runModelB(symptoms: FloatArray): String {
-        // Model expects a 1D tensor: [24]
-        val tensor = OnnxTensor.createTensor(env, symptoms)
+        // Model expects shape [1, 24], so wrap the 1D array inside another array
+        val input = arrayOf(symptoms)
 
+        val tensor = OnnxTensor.createTensor(env, input)
         val result = sessionB.run(mapOf("input" to tensor))
-        return result[0].value as String
+
+        val output = result[0].value
+
+        return when (output) {
+            is Array<*> -> output[0].toString()
+            else -> output.toString()
+        }
     }
+
 
 
 

@@ -67,6 +67,9 @@ class ChatActivity : AppCompatActivity() {
 
     private var sessionId: String? = null
 
+    private var sessionMode: String? = null
+
+
     private var openedFromInsightsCard = false
 
 
@@ -133,11 +136,19 @@ class ChatActivity : AppCompatActivity() {
         }
 
 
-
         if (sessionId != null) {
             loadExistingSession()
+
         } else if (!openedFromInsightsCard) {
-            addMessage("Hi, I’m here with you. What’s been on your mind today?", isUser = false)
+
+            // Ask user which type of session they want
+            addMessage(
+                "Before we begin, would you like a 5‑Minute Check‑In or a Deep Support Session today?",
+                isUser = false
+            )
+
+            // Wait for user response in onSendMessage()
+            sessionMode = null
         }
 
         // Handle physical "Enter" key and keyboard "Send" action
@@ -165,13 +176,53 @@ class ChatActivity : AppCompatActivity() {
 
         sendButton.setOnClickListener {
             val userText = messageInput.text.toString()
+
             if (userText.isNotBlank()) {
                 userHasSpoken = true
                 addMessage(userText, isUser = true)
                 messageInput.setText("")
+
+                // 🔥 SESSION MODE SELECTION LOGIC
+                if (sessionMode == null) {
+                    val choice = userText.lowercase()
+
+                    sessionMode = when {
+                        choice.contains("quick") || choice.contains("check") || choice.contains("5") ->
+                            "quick"
+
+                        choice.contains("deep") || choice.contains("long") || choice.contains("support") ->
+                            "deep"
+
+                        else -> {
+                            addMessage(
+                                "Just to confirm — would you prefer a 5‑Minute Check‑In or a Deep Support Session?",
+                                isUser = false
+                            )
+                            return@setOnClickListener
+                        }
+                    }
+
+                    // Start the appropriate flow
+                    if (sessionMode == "quick") {
+                        addMessage(
+                            "Great — we’ll do a short 5‑Minute Check‑In. What’s been on your mind today?",
+                            isUser = false
+                        )
+                    } else {
+                        addMessage(
+                            "Alright — we’ll take our time with a Deep Support Session. What’s been weighing on you lately?",
+                            isUser = false
+                        )
+                    }
+
+                    return@setOnClickListener
+                }
+
+                // 🔥 NORMAL CHATBOT LOGIC (after session type chosen)
                 processUserMessage(userText)
             }
         }
+
 
         voiceButton.setOnClickListener {
             startVoiceRecognition()
@@ -200,15 +251,21 @@ class ChatActivity : AppCompatActivity() {
                 messages.clear()
                 messages.addAll(session.messages)
 
-                adapter.notifyDataSetChanged() // 🔥 key fix
+                adapter.notifyDataSetChanged()
 
-                findViewById<RecyclerView>(R.id.chatRecyclerView)
-                    .post {
-                        findViewById<RecyclerView>(R.id.chatRecyclerView)
-                            .scrollToPosition(messages.size - 1)
-                    }
+                val recyclerView = findViewById<RecyclerView>(R.id.chatRecyclerView)
+                recyclerView.post {
+                    recyclerView.scrollToPosition(messages.size - 1)
+
+                    // ⭐ After loading an existing session, offer deep support
+                    addMessage(
+                        "If you'd like to continue this with more depth, I can guide you through a Deep Support Session.",
+                        isUser = false
+                    )
+                }
             }
     }
+
     // ---------------------------------------------------------
     // ADD MESSAGE
     // ---------------------------------------------------------
@@ -406,69 +463,144 @@ class ChatActivity : AppCompatActivity() {
 
         val knownCount = symptomState.count { it == 1f }
 
-        // Pass the last few messages to help AI avoid repeating itself
         val recentHistory = messages.takeLast(6).joinToString("\n") {
-            if(it.user) "User: ${it.text}" else "Assistant: ${it.text}"
+            if (it.user) "User: ${it.text}" else "Assistant: ${it.text}"
         }
 
-        val prompt = """
-        [CONTEXT]
-        - Current Emotion: $emotion
-        - Detected Pattern: $disorder
-        - Internal Interpretation: $interpretation
-        - Confirmed Symptoms: $symptomsConfirmed (Total: $knownCount/24)
-        - Session Status: ${if (isStartOfSession) "NEW SESSION" else "CONTINUING"}
+        // ---------------------------------------------------------
+        // QUICK SESSION PROMPT (5‑Minute Check‑In)
+        // ---------------------------------------------------------
+        val quickPrompt = """
+[CONTEXT]
+- Session Mode: QUICK (5‑Minute Check‑In)
+- This is a short, fast, supportive check‑in.
+- Ignore all previous conversation history.
+- Do NOT continue any previous diagnostic or symptom‑collection flow.
 
-        [RECENT CONVERSATION HISTORY]
-        $recentHistory
+[LATEST USER MESSAGE]
+"$userMessage"
 
-        [LATEST USER MESSAGE]
-        "$userMessage"
-        
-  LANGUAGE & CODE-SWITCHING RULE
-  - Detect the user's language and script: English, Urdu (Perso‑Arabic RTL script), or Roman Urdu (LTR).
-  - Preserve and mirror the user's script and direction: 
-    - If the user types in Urdu script, reply in Urdu script and respect right‑to‑left layout.
-    - If the user types in Roman Urdu, reply in Roman Urdu (left‑to‑right) so it mixes naturally with English.
-  - Match the user's linguistic style and code‑switching: if the user mixes English and Urdu, reply using the same mix and preserve English technical terms unchanged.
-  - Only transliterate or convert script when the user explicitly requests it (e.g., "Transliterate to Urdu script").
-  - If detection confidence is low, ask a short clarifying question before generating a full reply.
-  - Label any automatic translations by prepending "[Translated]" to translated text and indicate when transliteration was applied.
-  - If the model replies only in English after detecting Urdu, re‑generate with the explicit instruction "Reply in the user's language" or offer the user a visible toggle to choose response language.
+──────────────────────────────────────────────────────────
+5‑MINUTE CHECK‑IN RULES
+──────────────────────────────────────────────────────────
+Your goal is to complete the entire session in under 5 minutes.
+
+STRICT RULES:
+- Do NOT ask any questions.
+- Do NOT collect additional symptoms.
+- Do NOT explore thoughts, triggers, behaviours, or patterns.
+- Do NOT follow CBT phases.
+- Do NOT continue any previous conversation threads.
+- As soon as the user expresses ANY emotion or symptom:
+  IMMEDIATELY provide:
+  1) A brief, gentle diagnosis summary  
+  2) ONE personalised CBT recommendation  
+  3) A warm closing message  
+  4) A gentle invitation to begin a Deep Support Session if they want more depth  
+- Keep responses short, warm, and efficient.
+
+──────────────────────────────────────────────────────────
+CRISIS DETECTION (ALWAYS FIRST)
+──────────────────────────────────────────────────────────
+If the user expresses suicide, self‑harm, intent to harm others, or extreme hopelessness:
+Respond ONLY with empathy + grounding + safety resources:
+$emergencyContacts
+
+──────────────────────────────────────────────────────────
+CHECK‑IN FLOW (NO QUESTIONS)
+──────────────────────────────────────────────────────────
+STEP 1 — Read the user's message.
+STEP 2 — Identify the main emotion or symptom.
+STEP 3 — Provide:
+- A brief diagnosis summary  
+- ONE CBT recommendation  
+- A supportive closing line  
+- A gentle invitation to start a Deep Support Session  
+STEP 4 — End the session.
+
+──────────────────────────────────────────────────────────
+RESPONSE RULES
+──────────────────────────────────────────────────────────
+- Be concise and warm.
+- Do NOT ask questions.
+- Do NOT explore deeply.
+- Do NOT repeat anything.
+- Mirror the user’s emotional tone.
+- End the session after giving the recommendation and deep‑session invitation.
+""".trimIndent()
 
 
-        ──────────────────────────────────────────────────────────
-         PHASE 0: SAFETY OVERRIDE (ABSOLUTE PRIORITY)
-        ──────────────────────────────────────────────────────────
-        If suicide, self-harm, or severe hopelessness is mentioned:
-        1. STOP all other tasks. Respond only with empathy + resources in user's language:
-        $emergencyContacts
 
-        ──────────────────────────────────────────────────────────
-        PHASE 1: EXPLORATORY SYMPTOM COLLECTION (PRIORITY IF CONFIRMED < 3)
-        ──────────────────────────────────────────────────────────
-        - Validate emotion ($emotion) warmly.
-        - EXPLORATION RULE: Ask ONE follow-up question ONLY if it relates to what the user just said. 
-        - REPETITION GUARD: Check [RECENT CONVERSATION HISTORY]. DO NOT ask about energy or sleep if you already asked in the last 3 turns.
-        - If the user provided a long, detailed message, skip Phase 1 and move to Phase 3 immediately to keep flow fast.
+        // ---------------------------------------------------------
+        // DEEP SUPPORT SESSION PROMPT
+        // ---------------------------------------------------------
+        val deepPrompt = """
+[CONTEXT]
+- Current Emotion: $emotion
+- Detected Pattern: $disorder
+- Internal Interpretation: $interpretation
+- Confirmed Symptoms: $symptomsConfirmed (Total: $knownCount/24)
+- Session Status: ${if (isStartOfSession) "NEW SESSION" else "CONTINUING"}
+- Session Mode: DEEP SUPPORT SESSION
 
-        ──────────────────────────────────────────────────────────
-        PHASE 2: CONVERSATIONAL FLEXIBILITY
-        ──────────────────────────────────────────────────────────
-        - If the user talks about unrelated topics (hobbies, life, general facts), engage warmly and naturally. Do not force therapy talk.
+[RECENT CONVERSATION HISTORY]
+$recentHistory
 
-        ──────────────────────────────────────────────────────────
-        PHASE 3: REFLECTION & SUPPORT (IF CONFIRMED >= 3 OR HIGH-QUALITY INPUT)
-        ──────────────────────────────────────────────────────────
-        - If you have enough info ($knownCount >= 3) or the user's input is descriptive, provide a gentle reflection based on: $interpretation.
-        - Offer ONE supportive CBT thought or "suggestion to consider."
+[LATEST USER MESSAGE]
+"$userMessage"
 
-        [RESPONSE RULES]
-        - Be concise to speed up interaction.
-        - Never ask more than ONE question.
-        - Never repeat a question found in [RECENT CONVERSATION HISTORY].
-    """.trimIndent()
+──────────────────────────────────────────────────────────
+DEEP SUPPORT SESSION RULES
+──────────────────────────────────────────────────────────
+- Explore thoughts, emotions, behaviours, triggers, and patterns.
+- Ask reflective, open‑ended questions (ONE per turn).
+- Provide richer emotional validation.
+- Provide THREE CBT recommendations after diagnosis.
 
+──────────────────────────────────────────────────────────
+PHASE 0 — CRISIS DETECTION
+──────────────────────────────────────────────────────────
+If crisis → respond ONLY with empathy + grounding + safety resources:
+$emergencyContacts
+
+──────────────────────────────────────────────────────────
+PHASE 1 — SYMPTOM COLLECTION (DEEP)
+──────────────────────────────────────────────────────────
+- Ask ONE clinically relevant follow‑up question.
+- Explore behaviours, triggers, thoughts, emotions, consequences.
+- AUTOMATIC TRANSITION: Move to Phase 2 once ≥3 symptoms OR rich detail appears.
+
+──────────────────────────────────────────────────────────
+PHASE 2 — DIAGNOSIS (DEEP)
+──────────────────────────────────────────────────────────
+- ALWAYS provide a diagnosis summary automatically.
+- Use CBT formulation:
+  Situation → Thoughts → Emotions → Behaviours → Physical symptoms
+- Provide a tentative, non‑medical diagnosis.
+- Provide deeper emotional validation.
+
+──────────────────────────────────────────────────────────
+PHASE 3 — CBT RECOMMENDATIONS (DEEP)
+──────────────────────────────────────────────────────────
+- Provide THREE personalised CBT recommendations.
+- Each must be specific, actionable, and tied to symptoms.
+
+──────────────────────────────────────────────────────────
+RESPONSE RULES
+──────────────────────────────────────────────────────────
+- Be warm, reflective, and non‑clinical.
+- Never ask more than ONE question.
+- Mirror the user’s emotional tone.
+""".trimIndent()
+
+        // ---------------------------------------------------------
+        // SELECT PROMPT BASED ON SESSION MODE
+        // ---------------------------------------------------------
+        val prompt = if (sessionMode == "quick") quickPrompt else deepPrompt
+
+        // ---------------------------------------------------------
+        // SEND TO OPENAI
+        // ---------------------------------------------------------
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val response = client.chatCompletion(
@@ -503,6 +635,8 @@ class ChatActivity : AppCompatActivity() {
             }
         }
     }
+
+
 
 
 
@@ -575,7 +709,7 @@ class ChatActivity : AppCompatActivity() {
         }
 
         val session = TherapySession(
-            id = sessionId ?: "", // important: keep track if existing session
+            id = sessionId ?: "",
             title = title,
             tags = selectedTags.toList(),
             messages = messages.toList()
@@ -590,6 +724,9 @@ class ChatActivity : AppCompatActivity() {
             ref.add(session)
                 .addOnSuccessListener { docRef ->
                     sessionId = docRef.id
+
+                    // 🔥 Invalidate insights cache because new therapist messages were added
+                    TherapyCache.cachedTherapistMessages = null
 
                     Toast.makeText(this, "Session saved!", Toast.LENGTH_LONG).show()
 
@@ -607,6 +744,10 @@ class ChatActivity : AppCompatActivity() {
             // EXISTING SESSION → overwrite same document
             ref.document(sessionId!!).set(session)
                 .addOnSuccessListener {
+
+                    // 🔥 Invalidate insights cache because session was updated
+                    TherapyCache.cachedTherapistMessages = null
+
                     Toast.makeText(this, "Session updated!", Toast.LENGTH_LONG).show()
 
                     val intent = Intent(this, TherapyActivity::class.java)
@@ -620,4 +761,7 @@ class ChatActivity : AppCompatActivity() {
                 }
         }
     }
-    }
+
+
+
+}

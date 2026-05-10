@@ -15,6 +15,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.auth.FirebaseAuth
@@ -192,7 +193,8 @@ class ManageSessionBottomSheet(
     }
 
     private fun showDeleteConfirmation() {
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+
+        val dialog = MaterialAlertDialogBuilder(requireContext())
             .setTitle("Delete Session")
             .setMessage("Are you sure?")
             .setPositiveButton("Delete") { _, _ ->
@@ -200,6 +202,20 @@ class ManageSessionBottomSheet(
                 dismiss()
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+
+        dialog.setOnShowListener {
+
+            // DELETE button → red
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setTextColor(ContextCompat.getColor(requireContext(), R.color.red))
+
+            // CANCEL button → black
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                .setTextColor(ContextCompat.getColor(requireContext(), android.R.color.black))
+        }
+
+        dialog.show()
     }
+
 }

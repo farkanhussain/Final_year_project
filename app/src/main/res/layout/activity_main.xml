@@ -72,7 +72,7 @@
                             android:layout_height="wrap_content"/>
 
                         <TextView
-                            android:text="AI reflections from your recent sessions"
+                            android:text="AI reflections from your recent sessions:"
                             android:textColor="@color/white"
                             android:layout_marginTop="4dp"
                             android:layout_width="wrap_content"
@@ -115,7 +115,7 @@
                             android:layout_height="wrap_content"/>
 
                         <TextView
-                            android:text="Your weekly mood at a glance"
+                            android:text="Your weekly mood at a glance:"
                             android:textColor="@color/white"
                             android:layout_marginTop="4dp"
                             android:layout_width="wrap_content"
@@ -202,7 +202,7 @@
                         android:layout_height="wrap_content">
 
                         <TextView
-                            android:text="Journaling Prompts"
+                            android:text="Journaling Prompts:"
                             android:textSize="18sp"
                             android:textStyle="bold"
                             android:textColor="@color/white"
@@ -210,7 +210,7 @@
                             android:layout_height="wrap_content"/>
 
                         <TextView
-                            android:text="Personalised prompts to guide your writing"
+                            android:text="Personalised prompts to guide your writing:"
                             android:textColor="@color/white"
                             android:layout_marginTop="4dp"
                             android:layout_width="wrap_content"

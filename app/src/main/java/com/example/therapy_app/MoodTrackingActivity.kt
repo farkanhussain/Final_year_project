@@ -2,12 +2,11 @@ package com.example.therapy_app
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.*
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.drawerlayout.widget.DrawerLayout
-import com.github.mikephil.charting.charts.BarChart
-import com.github.mikephil.charting.data.*
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
@@ -17,6 +16,8 @@ class MoodTrackingActivity : AppCompatActivity() {
 
     private lateinit var drawerLayout: DrawerLayout
     private var selectedMood = -1
+
+    private var currentMoodInt = -1
 
     private fun moodToEmoji(mood: Int): String {
         return when (mood) {
@@ -49,7 +50,9 @@ class MoodTrackingActivity : AppCompatActivity() {
 
 
         journalBtn.setOnClickListener {
-            startActivity(Intent(this, JournalingActivity::class.java))
+            val intent = Intent(this, JournalEntryActivity::class.java)
+            intent.putExtra("preselectedMoodInt", currentMoodInt)
+            startActivity(intent)
         }
 
 
@@ -71,10 +74,20 @@ class MoodTrackingActivity : AppCompatActivity() {
         // EMOJI SELECTION LOGIC
         // ----------------------------------------------------
         for (i in 0 until moodLayout.childCount) {
-            val emoji = moodLayout.getChildAt(i) as TextView
+            val emojiView = moodLayout.getChildAt(i) as TextView
 
-            emoji.setOnClickListener {
-                selectedMood = i + 1
+            emojiView.setOnClickListener {
+
+                // Read the emoji from the TextView
+                val emoji = emojiView.text.toString().trim()
+
+                // Convert emoji → Int
+                currentMoodInt = emojiToMoodInt(emoji)
+
+                // Keep your save logic working
+                selectedMood = currentMoodInt
+
+                Log.d("DEBUG_MOOD", "Selected mood → emoji=$emoji, int=$currentMoodInt")
 
                 // Reset all emojis
                 for (j in 0 until moodLayout.childCount) {
@@ -82,9 +95,11 @@ class MoodTrackingActivity : AppCompatActivity() {
                 }
 
                 // Highlight selected
-                emoji.alpha = 1f
+                emojiView.alpha = 1f
             }
         }
+
+
 
         // ----------------------------------------------------
         // SAVE MOOD TO FIRESTORE
@@ -274,6 +289,18 @@ class MoodTrackingActivity : AppCompatActivity() {
                 sunMood.text = sun.first
                 sunTime.text = sun.second
             }
+
+    }
+
+    private fun emojiToMoodInt(emoji: String?): Int {
+        return when (emoji) {
+            "😢" -> 1
+            "😕" -> 2
+            "😐" -> 3
+            "🙂" -> 4
+            "😄" -> 5
+            else -> -1
+        }
     }
 }
 

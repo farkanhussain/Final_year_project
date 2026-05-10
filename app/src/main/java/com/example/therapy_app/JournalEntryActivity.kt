@@ -43,12 +43,18 @@ class JournalEntryActivity : AppCompatActivity() {
 
 
 
+
+
+
     private lateinit var journalText: EditText
     private lateinit var speechRecognizer: SpeechRecognizer
     private lateinit var recognizerIntent: Intent
 
     // 🧠 NEW: mood tracking
     private var selectedMood: String? = null
+
+
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,6 +65,10 @@ class JournalEntryActivity : AppCompatActivity() {
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar_journal_entry)
         val micButton = findViewById<FloatingActionButton>(R.id.micButton)
         val saveButton = findViewById<MaterialButton>(R.id.saveButton)
+
+
+
+
 
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
@@ -74,6 +84,9 @@ class JournalEntryActivity : AppCompatActivity() {
             // No prompts passed → generate new ones
             loadPrompts()
         }
+
+
+
 
 
         // ----------------------------------------------------
@@ -104,7 +117,6 @@ class JournalEntryActivity : AppCompatActivity() {
         // ----------------------------------------------------
         // LOAD AI PROMPTS
         // ----------------------------------------------------
-        loadPrompts()
 
         // ----------------------------------------------------
         // MOOD SELECTOR SETUP
@@ -125,8 +137,6 @@ class JournalEntryActivity : AppCompatActivity() {
     private fun loadPrompts() {
 
         val container = findViewById<LinearLayout>(R.id.promptContainer)
-
-        // Always clear existing prompts first
         container.removeAllViews()
 
         // ----------------------------------------------------
@@ -135,17 +145,17 @@ class JournalEntryActivity : AppCompatActivity() {
         val incomingPrompts = intent.getStringArrayListExtra("ai_prompts")
 
         if (incomingPrompts != null && incomingPrompts.isNotEmpty()) {
-            Log.d("DEBUG_PROMPTS", "Using prompts passed from HomeActivity: $incomingPrompts")
+            Log.d("DEBUG_PROMPTS", "Using prompts passed from HomeActivity")
 
             incomingPrompts.forEach { prompt ->
                 container.addView(createPromptView(prompt))
             }
 
-            return  // ⬅️ Stop here — do NOT regenerate prompts
+            return   // ⬅️ STOP HERE — do NOT generate new prompts
         }
 
         // ----------------------------------------------------
-        // 2️⃣ Otherwise, generate new prompts (fallback behaviour)
+        // 2️⃣ No incoming prompts → fetch Firestore sessions
         // ----------------------------------------------------
         val userId = FirebaseAuth.getInstance().currentUser?.uid
         Log.d("DEBUG", "UserId: $userId")
@@ -183,6 +193,7 @@ class JournalEntryActivity : AppCompatActivity() {
                 showFallbackPrompts(container)
             }
     }
+
 
     private fun generateAIPrompts(
         container: LinearLayout,
@@ -371,6 +382,26 @@ If context is missing, still generate general supportive prompts.
 
         Log.d("DEBUG_MOOD", "Mood selector child count: ${moodSelector.childCount}")
 
+        // --- STEP 2: Read preselected mood from Intent (Int) ---
+        val preselectedMoodInt = intent.getIntExtra("preselectedMoodInt", -1)
+
+        if (preselectedMoodInt != -1) {
+
+            // Convert Int → Emoji
+            val emoji = moodToEmoji(preselectedMoodInt)
+
+            Log.d("DEBUG_MOOD", "Converted preselectedMoodInt=$preselectedMoodInt to emoji=$emoji")
+
+            // Highlight using your existing function
+            highlightSelectedMood(emoji)
+
+            // Store emoji in your class variable
+            selectedMood = emoji
+
+            Log.d("DEBUG_MOOD", "Auto-selected mood from Intent → $selectedMood")
+        }
+
+        // --- EXISTING CLICK HANDLER LOGIC ---
         for (i in 0 until moodSelector.childCount) {
 
             val moodView = moodSelector.getChildAt(i) as TextView
@@ -381,21 +412,25 @@ If context is missing, still generate general supportive prompts.
 
                 Log.d("DEBUG_MOOD", "Mood clicked: ${moodView.text}")
 
+                // Reset all moods to faded
                 for (j in 0 until moodSelector.childCount) {
-
                     val child = moodSelector.getChildAt(j)
-
                     child.alpha = 0.4f
                 }
 
+                // Highlight the clicked mood
                 moodView.alpha = 1.0f
 
-                selectedMood = moodView.text.toString()
+                // Store emoji in your class variable
+                selectedMood = moodView.text.toString().trim()
 
                 Log.d("DEBUG_MOOD", "selectedMood updated → $selectedMood")
             }
         }
     }
+
+
+
     // ====================================================
     // 🎤 SPEECH TO TEXT
     // ====================================================
@@ -658,9 +693,23 @@ If context is missing, still generate general supportive prompts.
 
         for (i in 0 until moodSelector.childCount) {
             val moodView = moodSelector.getChildAt(i) as TextView
-            moodView.alpha = if (moodView.text.toString() == mood) 1f else 0.4f
+            val viewEmoji = moodView.text.toString().trim()   // <-- IMPORTANT FIX
+            moodView.alpha = if (viewEmoji == mood) 1f else 0.4f
         }
     }
+
+
+    private fun moodToEmoji(mood: Int): String {
+        return when (mood) {
+            1 -> "😢"
+            2 -> "😕"
+            3 -> "😐"
+            4 -> "🙂"
+            5 -> "😄"
+            else -> ""
+        }
+    }
+
 
     private fun emojiToMoodInt(emoji: String?): Int {
         return when (emoji) {

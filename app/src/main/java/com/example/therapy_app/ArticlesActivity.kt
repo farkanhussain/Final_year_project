@@ -159,7 +159,6 @@ class ArticlesActivity : AppCompatActivity() {
     private fun loadArticlesFromFirestore() {
 
 
-
         db.collection("articles")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .get()
@@ -263,9 +262,11 @@ class ArticlesActivity : AppCompatActivity() {
             "- ${article.title} (tags: ${article.tags.joinToString()})"
         }
 
-        // 5. Build the prompt
+        // 5. Prompt
         val prompt = """
-        You are an assistant inside a mental health app. Your task is to recommend the most relevant articles for the user based on their recent therapy sessions, journal entries, and emotional patterns.
+        You are an assistant inside a mental health app.
+        Recommend the most relevant articles based on the user’s recent sessions,
+        journal entries, and mood patterns.
 
         Therapy Sessions:
         $sessionSummaries
