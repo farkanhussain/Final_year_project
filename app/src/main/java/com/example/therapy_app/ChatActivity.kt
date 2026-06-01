@@ -38,6 +38,37 @@ class ChatActivity : AppCompatActivity() {
     private val messages = mutableListOf<Message>()
     private val selectedTags = mutableListOf<String>()
 
+    // Exact feature order from your CSV (must match Python feature_cols)
+    private val featureCols = listOf(
+        "feeling.nervous",
+        "panic",
+        "breathing.rapidly",
+        "sweating",
+        "trouble.in.concentration",
+        "having.trouble.in.sleeping",
+        "having.trouble.with.work",
+        "hopelessness",
+        "anger",
+        "over.react",
+        "change.in.eating",
+        "suicidal.thought",
+        "feeling.tired",
+        "close.friend",
+        "social.media.addiction",
+        "weight.gain",
+        "material.possessions",
+        "introvert",
+        "popping.up.stressful.memory",
+        "having.nightmares",
+        "avoids.people.or.activities",
+        "feeling.negative",
+        "trouble.concentrating",
+        "blamming.yourself"
+    )
+
+    private var lastAskedFeature: String? = null
+
+
     private lateinit var modelRunner: OnnxModelRunner
 
     private val VOICE_REQUEST_CODE = 101
@@ -165,13 +196,54 @@ class ChatActivity : AppCompatActivity() {
                     userHasSpoken = true
                     addMessage(userText, isUser = true)
                     messageInput.setText("")
-                    processUserMessage(userText)
+
+                    // If sessionMode not chosen yet, try to infer from this message
+                    if (sessionMode == null) {
+                        val choice = userText.lowercase()
+
+                        sessionMode = when {
+                            choice.contains("quick") || choice.contains("check") || choice.contains("5") ->
+                                "quick"
+
+                            choice.contains("deep") || choice.contains("long") || choice.contains("support") ->
+                                "deep"
+
+                            else -> {
+                                addMessage(
+                                    "Just to confirm — would you prefer a 5‑Minute Check‑In or a Deep Support Session?",
+                                    isUser = false
+                                )
+                                // Do not call processUserMessage here; wait for the user's next input
+                                return@setOnEditorActionListener true
+                            }
+                        }
+
+                        // Start the appropriate flow message
+                        if (sessionMode == "quick") {
+                            addMessage(
+                                "Great — we’ll do a short 5‑Minute Check‑In. What’s been on your mind today?",
+                                isUser = false
+                            )
+                        } else {
+                            addMessage(
+                                "Alright — we’ll take our time with a Deep Support Session. What’s been weighing on you lately?",
+                                isUser = false
+                            )
+                        }
+
+                        // Process the same message that selected the session mode
+                        processUserMessage(userText)
+                    } else {
+                        // Normal flow after session type chosen
+                        processUserMessage(userText)
+                    }
                 }
                 true // Consume the event
             } else {
                 false // Pass the event on
             }
         }
+
 
 
         sendButton.setOnClickListener {
@@ -215,6 +287,8 @@ class ChatActivity : AppCompatActivity() {
                         )
                     }
 
+                    // 🔥 Process the SAME message that selected the session mode
+                    processUserMessage(userText)
                     return@setOnClickListener
                 }
 
@@ -222,6 +296,8 @@ class ChatActivity : AppCompatActivity() {
                 processUserMessage(userText)
             }
         }
+
+
 
 
         voiceButton.setOnClickListener {
@@ -319,55 +395,79 @@ class ChatActivity : AppCompatActivity() {
         try {
 
             // =====================================================
-            // SINGLE UNIFIED PIPELINE (CRISIS-FIRST ARCHITECTURE)
+            // NORMALISE SESSION MODE (BUT DO NOT OVERRIDE IT)
             // =====================================================
+            val mode = sessionMode?.trim()?.lowercase() ?: ""
 
+            // If no session mode chosen yet → do nothing.
+            // The send button logic will handle session selection.
+            if (mode.isEmpty()) {
+                return
+            }
+
+            // =====================================================
+            // CRISIS-FIRST ARCHITECTURE
+            // =====================================================
             if (CrisisDetector.isCrisisMessage(userMessage)) {
 
                 addMessage(
                     """
-        I'm really sorry you're feeling this way.
+                I'm really sorry you're feeling this way.
 
-        You don’t have to go through this alone.
+                You don’t have to go through this alone.
 
-        Here are some support options you can use right now:
+                Here are some support options you can use right now:
 
-        $emergencyContacts
+                $emergencyContacts
 
-        If you'd like, tap the button below for immediate help.
-        """.trimIndent(),
+                If you'd like, tap the button below for immediate help.
+                """.trimIndent(),
                     isUser = false
                 )
 
                 CoroutineScope(Dispatchers.Main).launch {
-                    delay(5000) // 5 seconds
+                    delay(5000)
                     showEmergencyButton()
                 }
 
                 return
             }
 
-            // 2. Model A (emotion)
-            val emotion = modelRunner.runModelA(userMessage)
+            // =====================================================
+            // QUICK SESSION → MODEL A ONLY
+            // =====================================================
+            if (mode == "quick") {
 
-            // 3. Symptom extraction (safe, non-blocking)
-            extractSymptomsFromNaturalLanguage(userMessage)
+                val emotion = modelRunner.runModelA(userMessage)
 
+                sendToAI(
+                    userMessage = userMessage,
+                    emotion = emotion,
+                    disorder = "not_applicable",
+                    interpretation = emotion
+                )
 
-            // 5. Model B ONLY if enough data
-            val knownCount = symptomState.count { it != -1f }
-
-            val disorder = if (knownCount >= 5) {
-                modelRunner.runModelB(getSymptomVector())
-            } else {
-                "insufficient_data"
+                return
             }
 
-            // 6. Fusion
-            val interpretation = FusionLogic.fuse(emotion, disorder)
+            // =====================================================
+            // DEEP SUPPORT SESSION → MODEL B ONLY
+            // =====================================================
+            if (mode == "deep") {
 
-            // 7. FINAL AI RESPONSE (ONLY ONE OUTPUT PATH)
-            sendToAI(userMessage, emotion, disorder, interpretation)
+                extractSymptomsFromNaturalLanguage(userMessage)
+
+                val disorder = modelRunner.runModelB(getSymptomVector())
+
+                sendToAI(
+                    userMessage = userMessage,
+                    emotion = "not_applicable",
+                    disorder = disorder,
+                    interpretation = disorder
+                )
+
+                return
+            }
 
         } catch (e: Exception) {
             runOnUiThread {
@@ -376,30 +476,37 @@ class ChatActivity : AppCompatActivity() {
         }
     }
 
+
+
+
     // ---------------------------------------------------------
     // NATURAL LANGUAGE SYMPTOM EXTRACTION (Soft)
     // ---------------------------------------------------------
     private fun extractSymptomsFromNaturalLanguage(text: String) {
         val lower = text.lowercase()
 
-        // Keyword groups
+        // Emotional symptoms
         val sadnessWords = listOf("sad", "down", "low", "depressed", "empty", "unhappy")
+        val anxietyWords = listOf("anxious", "nervous", "on edge", "panic", "worried", "scared")
+        val angerWords = listOf("angry", "furious", "irritated", "mad", "frustrated", "pissed")
+
+        // Physical symptoms
         val fatigueWords = listOf("tired", "exhausted", "fatigued", "no energy", "drained")
         val sleepWords = listOf("insomnia", "can't sleep", "sleeping badly", "awake all night", "tossing and turning")
-        val anxietyWords = listOf("anxious", "nervous", "on edge", "panic", "worried", "scared")
-
-        // New symptom groups
         val restlessnessWords = listOf("restless", "fidgety", "can't sit still", "agitated", "pacing")
+
+        // Behavioural symptoms
         val stressedWords = listOf("stressed", "overwhelmed", "pressure", "burnt out", "too much going on")
-        val angerWords = listOf("angry", "annoyed", "irritable", "mad", "frustrated", "pissed", "furious")
-        val socialMediaWords = listOf("doomscrolling", "scrolling", "social media", "instagram", "tiktok", "addicted to my phone")
         val antisocialWords = listOf("antisocial", "withdrawn", "avoiding people", "isolating", "staying in", "don't want to talk")
+        val overreactingWords = listOf("overreacting", "snapped", "too sensitive", "melt down", "explosive", "volatile")
+        val socialMediaWords = listOf("doomscrolling", "scrolling", "social media", "instagram", "tiktok", "addicted to my phone")
+
+        // Cognitive symptoms
         val selfBlameWords = listOf("my fault", "blaming myself", "i failed", "guilty", "ashamed", "failure")
         val traumaWords = listOf("nightmare", "bad dream", "flashback", "reliving", "traumatic memory", "can't forget")
-        val overreactingWords = listOf("overreacting", "snapped", "too sensitive", "melt down", "explosive", "volatile")
         val weightGainWords = listOf("weight gain", "gained weight", "eating more", "heavier", "appetite increased")
 
-        // Mapping to symptomState indices
+        // Mapping to symptomState indices (your existing 0–12 mapping)
         if (sadnessWords.any { lower.contains(it) }) symptomState[0] = 1f
         if (fatigueWords.any { lower.contains(it) }) symptomState[1] = 1f
         if (sleepWords.any { lower.contains(it) }) symptomState[2] = 1f
@@ -422,9 +529,21 @@ class ChatActivity : AppCompatActivity() {
     // ---------------------------------------------------------
     // SYMPTOM VECTOR FOR MODEL B
     // ---------------------------------------------------------
-    private fun getSymptomVector(): FloatArray {
-        return symptomState.map { if (it < 0) 0f else it }.toFloatArray()
+    private fun getSymptomVector(expectedLen: Int = 24): FloatArray {
+        // Ensure symptomState has at least expectedLen entries
+        val vector = FloatArray(expectedLen) { idx ->
+            val v = if (idx < symptomState.size) symptomState[idx] else 0f
+            when {
+                v.isNaN() -> 0f
+                v < 0f -> 0f
+                else -> v
+            }
+        }
+        return vector
     }
+
+
+
 
     // ---------------------------------------------------------
     // OPENAI CALL
@@ -471,62 +590,55 @@ class ChatActivity : AppCompatActivity() {
         // QUICK SESSION PROMPT (5‑Minute Check‑In)
         // ---------------------------------------------------------
         val quickPrompt = """
+[MODEL SELECTION]
+Use Model A exclusively. 
+Model A contains emotions associated with depression (e.g., sadness, anger, worthlessness, irritability, guilt, hopelessness).
+
 [CONTEXT]
 - Session Mode: QUICK (5‑Minute Check‑In)
-- This is a short, fast, supportive check‑in.
+- This is a short, supportive emotional check‑in.
 - Ignore all previous conversation history.
-- Do NOT continue any previous diagnostic or symptom‑collection flow.
+- Do NOT collect symptoms.
+- Do NOT ask questions.
+- Do NOT follow CBT phases.
+- Do NOT continue any previous diagnostic flow.
 
 [LATEST USER MESSAGE]
 "$userMessage"
 
 ──────────────────────────────────────────────────────────
-5‑MINUTE CHECK‑IN RULES
+QUICK SESSION RULES — MODEL A ONLY
 ──────────────────────────────────────────────────────────
-Your goal is to complete the entire session in under 5 minutes.
+Your job is to:
+1) Identify the dominant emotion using Model A  
+2) Determine whether the emotion aligns with depression‑related patterns  
+3) Provide:
+   - A brief emotional interpretation  
+   - ONE personalised CBT recommendation  
+   - A warm closing message  
+   - A gentle invitation to begin a Deep Support Session  
 
-STRICT RULES:
-- Do NOT ask any questions.
-- Do NOT collect additional symptoms.
-- Do NOT explore thoughts, triggers, behaviours, or patterns.
-- Do NOT follow CBT phases.
-- Do NOT continue any previous conversation threads.
-- As soon as the user expresses ANY emotion or symptom:
-  IMMEDIATELY provide:
-  1) A brief, gentle diagnosis summary  
-  2) ONE personalised CBT recommendation  
-  3) A warm closing message  
-  4) A gentle invitation to begin a Deep Support Session if they want more depth  
-- Keep responses short, warm, and efficient.
+STRICT PROHIBITIONS:
+- No questions.
+- No symptom collection.
+- No multi‑step CBT.
+- No exploration of triggers, thoughts, or behaviours.
+- No continuation of previous threads.
 
 ──────────────────────────────────────────────────────────
 CRISIS DETECTION (ALWAYS FIRST)
 ──────────────────────────────────────────────────────────
 If the user expresses suicide, self‑harm, intent to harm others, or extreme hopelessness:
 Respond ONLY with empathy + grounding + safety resources:
-$emergencyContacts
+{emergencyContacts}
 
 ──────────────────────────────────────────────────────────
-CHECK‑IN FLOW (NO QUESTIONS)
+RESPONSE STYLE
 ──────────────────────────────────────────────────────────
-STEP 1 — Read the user's message.
-STEP 2 — Identify the main emotion or symptom.
-STEP 3 — Provide:
-- A brief diagnosis summary  
-- ONE CBT recommendation  
-- A supportive closing line  
-- A gentle invitation to start a Deep Support Session  
-STEP 4 — End the session.
-
-──────────────────────────────────────────────────────────
-RESPONSE RULES
-──────────────────────────────────────────────────────────
-- Be concise and warm.
-- Do NOT ask questions.
-- Do NOT explore deeply.
-- Do NOT repeat anything.
+- Warm, concise, emotionally attuned.
 - Mirror the user’s emotional tone.
-- End the session after giving the recommendation and deep‑session invitation.
+- Keep the entire session under 5 minutes.
+- End the session after the recommendation + invitation.
 """.trimIndent()
 
 
@@ -534,13 +646,17 @@ RESPONSE RULES
         // ---------------------------------------------------------
         // DEEP SUPPORT SESSION PROMPT
         // ---------------------------------------------------------
-        val deepPrompt = """
+        val deepPrompt ="""
+[MODEL SELECTION]
+Use Model B exclusively.
+Model B contains symptoms and behavioural/emotional patterns for depression, anxiety, stress, loneliness, anger, and related conditions.
+
 [CONTEXT]
 - Current Emotion: $emotion
 - Detected Pattern: $disorder
 - Internal Interpretation: $interpretation
 - Confirmed Symptoms: $symptomsConfirmed (Total: $knownCount/24)
-- Session Status: ${if (isStartOfSession) "NEW SESSION" else "CONTINUING"}
+- Session Status: ${if (isStartOfSession) "NEW" else "CONTINUING"}
 - Session Mode: DEEP SUPPORT SESSION
 
 [RECENT CONVERSATION HISTORY]
@@ -550,12 +666,24 @@ $recentHistory
 "$userMessage"
 
 ──────────────────────────────────────────────────────────
-DEEP SUPPORT SESSION RULES
+DEEP SUPPORT SESSION RULES — MODEL B
 ──────────────────────────────────────────────────────────
-- Explore thoughts, emotions, behaviours, triggers, and patterns.
-- Ask reflective, open‑ended questions (ONE per turn).
-- Provide richer emotional validation.
-- Provide THREE CBT recommendations after diagnosis.
+Your goal is to explore the user’s emotional and behavioural experience in a natural, human way.
+
+- Ask ONE meaningful follow‑up question per turn.
+- The question MUST be based on what the user actually said.
+- Do NOT repeat the same question type.
+- Choose the question category based on the user’s message:
+  • If they express an emotion → explore the emotion  
+  • If they describe a behaviour → explore the behaviour  
+  • If they mention physical symptoms → explore the physical symptoms  
+  • If they describe thoughts → explore the thoughts  
+  • If they describe triggers → explore the triggers  
+
+- Once the user provides:
+  • ≥3 symptoms OR  
+  • rich emotional/behavioural detail  
+  → Move automatically to diagnosis.
 
 ──────────────────────────────────────────────────────────
 PHASE 0 — CRISIS DETECTION
@@ -564,33 +692,39 @@ If crisis → respond ONLY with empathy + grounding + safety resources:
 $emergencyContacts
 
 ──────────────────────────────────────────────────────────
-PHASE 1 — SYMPTOM COLLECTION (DEEP)
+PHASE 1 — FLEXIBLE SYMPTOM & EMOTION EXPLORATION
 ──────────────────────────────────────────────────────────
-- Ask ONE clinically relevant follow‑up question.
-- Explore behaviours, triggers, thoughts, emotions, consequences.
-- AUTOMATIC TRANSITION: Move to Phase 2 once ≥3 symptoms OR rich detail appears.
+- Ask ONE question that directly responds to the user’s message.
+- Do NOT default to physical symptoms.
+- If the user expresses anger, sadness, fear, guilt, hopelessness, or overwhelm:
+  → Explore the emotion.
+- If the user describes behaviours (e.g., isolation, overreacting):
+  → Explore the behaviour.
+- If the user mentions physical symptoms:
+  → Explore the physical symptoms.
+- Never repeat the same question type twice in a row.
 
 ──────────────────────────────────────────────────────────
-PHASE 2 — DIAGNOSIS (DEEP)
+PHASE 2 — DIAGNOSIS (MODEL B)
 ──────────────────────────────────────────────────────────
-- ALWAYS provide a diagnosis summary automatically.
+- Provide a tentative, non‑medical diagnosis.
 - Use CBT formulation:
   Situation → Thoughts → Emotions → Behaviours → Physical symptoms
-- Provide a tentative, non‑medical diagnosis.
-- Provide deeper emotional validation.
+- Validate the user’s emotional experience deeply.
 
 ──────────────────────────────────────────────────────────
-PHASE 3 — CBT RECOMMENDATIONS (DEEP)
+PHASE 3 — CBT RECOMMENDATIONS (MODEL B)
 ──────────────────────────────────────────────────────────
 - Provide THREE personalised CBT recommendations.
-- Each must be specific, actionable, and tied to symptoms.
+- Each must be specific, actionable, and tied to the symptoms or emotions.
 
 ──────────────────────────────────────────────────────────
-RESPONSE RULES
+RESPONSE STYLE
 ──────────────────────────────────────────────────────────
-- Be warm, reflective, and non‑clinical.
+- Warm, reflective, non‑clinical.
 - Never ask more than ONE question.
 - Mirror the user’s emotional tone.
+- Respond to the user, not the script.
 """.trimIndent()
 
         // ---------------------------------------------------------
