@@ -35,6 +35,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="false" />
+
         <activity android:name=".RegisterActivity" />
         <activity android:name=".MFAEnrollmentActivity"/>
         <activity android:name=".MfaSignInActivity"/>
@@ -43,13 +44,12 @@
         <activity android:name=".MoodTrackingActivity"/>
         <activity android:name=".JournalingActivity"/>
         <activity android:name=".ArticlesActivity"/>
-        <activity android:name=".ChatActivity"/>
+
+        <!-- ⭐ ChatActivity updated with adjustPan -->
+        <activity android:name=".ChatActivity" />
         <activity android:name=".MoodTrendsActivity"/>
         <activity android:name=".JournalEntryActivity"/>
         <activity android:name=".EmailVerificationActivity"/>
-
-
-
 
     </application>
 

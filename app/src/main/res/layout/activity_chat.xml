@@ -43,13 +43,147 @@
             app:rippleColor="@color/light_green"/>
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/sessionIntroText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Please select your preferred language and session type / براہ کرم اپنی مطلوبہ زبان اور سیشن کی قسم منتخب کریں"
+        android:textColor="@android:color/black"
+        android:textSize="14sp"
+        android:padding="12dp"
+        android:gravity="center"
+        app:layout_constraintTop_toBottomOf="@id/actionBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- LANGUAGE SELECTION -->
+    <LinearLayout
+        android:id="@+id/languageSelector"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="12dp"
+        app:layout_constraintTop_toBottomOf="@id/sessionIntroText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <Button
+            android:id="@+id/btnEnglish"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_margin="6dp"
+            android:text="English"
+            android:backgroundTint="@color/red_dark"
+            android:textColor="@android:color/white"/>
+
+        <Button
+            android:id="@+id/btnUrdu"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_margin="6dp"
+            android:text="اردو"
+            android:backgroundTint="@color/red_dark"
+            android:textColor="@android:color/white"/>
+    </LinearLayout>
+
+
+    <!-- SESSION MODE SELECTION (HIDDEN INITIALLY) -->
+    <LinearLayout
+        android:id="@+id/sessionSelector"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="12dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/languageSelector"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <Button
+            android:id="@+id/btnQuick"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_margin="6dp"
+            android:text="Quick Check‑In"
+            android:backgroundTint="@color/red_dark"
+            android:textColor="@android:color/white"/>
+
+        <Button
+            android:id="@+id/btnDeep"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_margin="6dp"
+            android:text="Deep Session"
+            android:backgroundTint="@color/red_dark"
+            android:textColor="@android:color/white"/>
+    </LinearLayout>
+
+    <!-- SYMPTOM QUESTIONNAIRE (HIDDEN INITIALLY) -->
+    <ScrollView
+        android:id="@+id/questionnaireContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:padding="16dp"
+        android:visibility="gone"
+        android:background="@color/beige"
+        app:layout_constraintTop_toBottomOf="@id/sessionSelector"
+        app:layout_constraintBottom_toTopOf="@id/inputBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+
+    <LinearLayout
+            android:id="@+id/questionnaireLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:background="@color/red_dark"
+            android:elevation="6dp"
+            android:clipToPadding="false"
+            android:clipChildren="false">
+
+            <TextView
+                android:id="@+id/questionnaireTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Please answer the following questions:"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="@color/white"
+                android:paddingBottom="16dp"/>
+
+            <!-- CHECKBOX QUESTIONS WILL BE ADDED PROGRAMMATICALLY -->
+
+            <Button
+                android:id="@+id/btnSubmitSymptoms"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Continue"
+                android:layout_marginTop="24dp"
+                android:backgroundTint="@color/green"
+                android:textColor="@android:color/white"
+                android:padding="12dp"
+                android:textStyle="bold"/>
+        </LinearLayout>
+    </ScrollView>
+
+
+
+
     <!-- CHAT LIST -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/chatRecyclerView"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:padding="12dp"
-        app:layout_constraintTop_toBottomOf="@id/actionBar"
+        app:layout_constraintTop_toBottomOf="@id/sessionSelector"
         app:layout_constraintBottom_toTopOf="@id/inputBar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />

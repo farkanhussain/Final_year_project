@@ -231,7 +231,8 @@ class TherapyActivity : AppCompatActivity() {
             // Match search query (tags OR messages)
             val matchesQuery = queryTerms.isEmpty() || queryTerms.any { term ->
                 sessionTags.any { it.contains(term) } ||
-                        session.messages.any { it.text.contains(term, ignoreCase = true) }
+                        session.messages.any { it.text?.contains(term, ignoreCase = true) == true }
+
             }
 
             // Match selected chips (ANY match)

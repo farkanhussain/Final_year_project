@@ -12,27 +12,60 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
-import com.example.therapy_app.BuildConfig
-import com.aallam.openai.api.BetaOpenAI
 import com.aallam.openai.api.chat.ChatCompletionRequest
 import com.aallam.openai.api.chat.ChatMessage
 import com.aallam.openai.api.chat.ChatRole
 import com.aallam.openai.api.model.ModelId
 import com.aallam.openai.client.OpenAI
 import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.firestore.ktx.firestore
 import kotlinx.coroutines.delay
+import kotlin.collections.mapIndexedNotNull
 import android.net.Uri
+import android.util.Log
+import android.graphics.Color
+import org.json.JSONObject
 
 private val db = Firebase.firestore
 private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
 
 class ChatActivity : AppCompatActivity() {
+
+    // ==========================================================
+// STATIC DEEP SESSION PROMPT TEMPLATE
+// ==========================================================
+
+    private var isUserInputLocked: Boolean = false
+
+    private var cachedDisorder: String? = null
+
+    private var sessionStatus: String = "NEW"
+
+    var lastAiUnknownSymptoms: List<String> = emptyList()
+
+    private var diagnosisDelivered = false
+
+    private val cbtGenerator = CBTExerciseGenerator()
+
+    private lateinit var symptomEngine: SymptomCollectionEngine
+
+    private lateinit var deepManager: DeepSessionManager
+
+    private lateinit var chatMoodSelector: LinearLayout
+    private var deepMoodSelected = false
+    private var deepMoodInt = -1
+
+    private lateinit var messageInput: EditText
+    private lateinit var sendButton: ImageButton
+    private lateinit var voiceButton: ImageButton
+
 
     private lateinit var adapter: ChatAdapter
     private val messages = mutableListOf<Message>()
@@ -66,8 +99,49 @@ class ChatActivity : AppCompatActivity() {
         "blamming.yourself"
     )
 
+    val symptomQuestions: Map<String, String> = mapOf(
+        "feeling.nervous" to "Have you been feeling nervous, anxious, or on edge?",
+        "panic" to "Have you experienced panic or sudden intense fear?",
+        "breathing.rapidly" to "Have you had episodes of rapid or difficult breathing?",
+        "sweating" to "Have you experienced sweating during moments of stress or anxiety?",
+        "trouble.in.concentration" to "Have you had trouble concentrating or focusing?",
+        "having.trouble.in.sleeping" to "Have you been having trouble sleeping?",
+        "having.trouble.with.work" to "Have you been struggling with work or responsibilities?",
+        "hopelessness" to "Have you been feeling hopeless or like things won’t improve?",
+        "feeling.negative" to "Have you been experiencing persistent negative thoughts?",
+        "feeling.tired" to "Have you been feeling tired or low on energy?",
+        "anger" to "Have you been feeling angry or irritable?",
+        "over.react" to "Have you been overreacting or snapping easily?",
+        "change.in.eating" to "Have you noticed changes in your eating habits?",
+        "close.friend" to "Have you been feeling lonely or without close support?",
+        "avoids.people.or.activities" to "Have you been avoiding people or activities?",
+        "popping.up.stressful.memory" to "Have stressful memories been popping up unexpectedly?",
+        "having.nightmares" to "Have you been having nightmares?",
+        "blamming.yourself" to "Have you been blaming yourself or feeling guilty?",
+        "suicidal.thought" to "Have you had thoughts of harming yourself?",
+        "social.media.addiction" to "Have you been spending excessive time on social media or feeling unable to disconnect?",
+        "weight.gain" to "Have you experienced recent weight gain or changes in your body weight?",
+        "material.possessions" to "Have you been relying on buying things or material possessions to cope with emotions?",
+        "introvert" to "Have you been withdrawing socially or preferring to isolate yourself?",
+        "loss.of.interest" to "Have you lost interest in activities you used to enjoy?"
+
+    )
+
+
+    private lateinit var questionnaireContainer: ScrollView
+    private lateinit var questionnaireLayout: LinearLayout
+    private lateinit var questionnaireTitle: TextView
+    private lateinit var btnSubmitSymptoms: Button
+    private var lastDiagnosis: String? = null
+    private lateinit var inputBar: LinearLayout
+
+    private lateinit var recyclerView: RecyclerView
+
     private var lastAskedFeature: String? = null
 
+    private val featureIndexMap: Map<String, Int> = featureCols.mapIndexed { i, name -> name to i }.toMap()
+
+    private var selectedLanguage: String? = null
 
     private lateinit var modelRunner: OnnxModelRunner
 
@@ -75,6 +149,7 @@ class ChatActivity : AppCompatActivity() {
     private val presetTags = listOf("Depression", "Anxiety", "Mindfulness")
 
     private val openAiKey by lazy { BuildConfig.OPENAI_API_KEY }
+    private lateinit var client: OpenAI
 
     private val emergencyContacts = """
                 - Samaritans (UK): 116 123 (free, 24/7)
@@ -92,7 +167,7 @@ class ChatActivity : AppCompatActivity() {
     // ---------------------------------------------------------
     // Conversational Symptom System (Soft + Optional)
     // ---------------------------------------------------------
-    private val symptomState = FloatArray(24) { -1f }   // -1 = unknown
+    private var symptomState = FloatArray(24) { -1f }   // -1 = unknown
     private var lastPromptTime = 0L
     private var userHasSpoken = false
 
@@ -109,7 +184,29 @@ class ChatActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        window.setDecorFitsSystemWindows(true)
+        Log.w("LifecycleCheck", "🔥 onCreate() fired in ${this::class.java.simpleName}")
+        Log.w("LifecycleCheck", "🔥 Activity instance hash = ${this.hashCode()}")
+
+        try {
+            Log.w("LifecycleCheck", "🔥 deepManager at onCreate = $deepManager")
+        } catch (e: Exception) {
+            Log.w("LifecycleCheck", "🔥 deepManager not accessible yet (${e.message})")
+        }
+
+        Log.d("OPENAI", "Key length = ${openAiKey.length}")
+
+        client = OpenAI(
+            token = openAiKey
+        )
+
+
+
+
+
+
+
+
+    window.setDecorFitsSystemWindows(true)
         setContentView(R.layout.activity_chat)
 
          openedFromInsightsCard = intent.getBooleanExtra("from_insights_card", false)
@@ -118,18 +215,190 @@ class ChatActivity : AppCompatActivity() {
         }
 
 
+
+
         sessionId = intent.getStringExtra("SESSION_ID")
 
         modelRunner = OnnxModelRunner(this)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar_chat)
-        val recyclerView = findViewById<RecyclerView>(R.id.chatRecyclerView)
-        val messageInput = findViewById<EditText>(R.id.messageInput)
-        val sendButton = findViewById<ImageButton>(R.id.sendButton)
-        val voiceButton = findViewById<ImageButton>(R.id.voiceButton)
+        val languageSelector = findViewById<LinearLayout>(R.id.languageSelector)
+        val sessionSelector = findViewById<LinearLayout>(R.id.sessionSelector)
+        val btnEnglish = findViewById<Button>(R.id.btnEnglish)
+        val btnUrdu = findViewById<Button>(R.id.btnUrdu)
+        val btnQuick = findViewById<Button>(R.id.btnQuick)
+        val btnDeep = findViewById<Button>(R.id.btnDeep)
+        recyclerView = findViewById(R.id.chatRecyclerView)
+        questionnaireContainer = findViewById(R.id.questionnaireContainer)
+        questionnaireLayout = findViewById(R.id.questionnaireLayout)
+        questionnaireTitle = findViewById(R.id.questionnaireTitle)
+        btnSubmitSymptoms = findViewById(R.id.btnSubmitSymptoms)
+        inputBar = findViewById(R.id.inputBar)
+        messageInput = findViewById(R.id.messageInput)
+        sendButton = findViewById(R.id.sendButton)
+        voiceButton = findViewById(R.id.voiceButton)
         val saveSessionButton = findViewById<Button>(R.id.saveSessionButton)
         emergencyButton = findViewById(R.id.emergencyButton)
         emergencyOverlay = findViewById(R.id.emergencyOverlay)
+
+        messageInput.isEnabled = false
+        sendButton.isEnabled = false
+        voiceButton.isEnabled = false
+
+        btnEnglish.setOnClickListener {
+            selectedLanguage = "en"
+
+            // Translate session buttons to English
+            btnQuick.text = "Quick Check‑In"
+            btnDeep.text = "Deep Support Session"
+
+            languageSelector.visibility = View.GONE
+            sessionSelector.visibility = View.VISIBLE
+        }
+
+        btnUrdu.setOnClickListener {
+            selectedLanguage = "ur"
+
+            // Translate session buttons to Urdu
+            btnQuick.text = "مختصر چیک اِن"
+            btnDeep.text = "تفصیلی سیشن"
+
+            languageSelector.visibility = View.GONE
+            sessionSelector.visibility = View.VISIBLE
+        }
+
+        btnQuick.setOnClickListener {
+            sessionMode = "quick"
+            sessionStatus = "NEW"
+
+            sessionSelector.visibility = View.GONE
+            findViewById<TextView>(R.id.sessionIntroText).visibility = View.GONE
+
+            enableChatInput()
+
+            if (selectedLanguage == "ur") {
+                addMessage("بہت اچھا — ہم ایک مختصر چیک اِن کریں گے۔ آج آپ کے ذہن میں کیا چل رہا ہے؟", false)
+            } else {
+                addMessage("Great — we’ll do a short 5‑Minute Check‑In. What’s been on your mind today?", false)
+            }
+        }
+
+
+        btnDeep.setOnClickListener {
+
+            Log.d("DeepButton", "🔵 Deep button clicked")
+            Log.d("DeepButton", "Activity instance hash = ${this.hashCode()}")
+
+            // =====================================================
+            // SESSION STATE
+            // =====================================================
+            sessionMode = "deep"
+            sessionStatus = "NEW"
+
+            Log.d("DeepButton", "Session mode set: $sessionMode | status: $sessionStatus")
+
+            // =====================================================
+            // UI CLEANUP
+            // =====================================================
+            sessionSelector.visibility = View.GONE
+            findViewById<TextView>(R.id.sessionIntroText).visibility = View.GONE
+
+            // =====================================================
+            // RESET CORE DEEP STATE MACHINE
+            // =====================================================
+            deepManager = DeepSessionManager()   // starts in ASSESSMENT by default
+            Log.d("DeepButton", "DeepSessionManager reset to ASSESSMENT")
+
+            // =====================================================
+            // RESET SYMPTOM ENGINE
+            // =====================================================
+            symptomEngine = SymptomCollectionEngine(featureIndexMap, featureCols)
+            Log.d("DeepButton", "Symptom engine reset")
+
+            // =====================================================
+            // RESET SESSION TRACKING FLAGS
+            // =====================================================
+            isFirstAiResponse = true
+            sessionJustLoaded = false
+            openedFromInsightsCard = false
+
+            Log.d("DeepButton", "Session flags reset")
+
+            // =====================================================
+            // SHOW QUESTIONNAIRE (Assessment Phase)
+            // =====================================================
+            showSymptomQuestionnaire()
+            Log.d("DeepButton", "Questionnaire displayed")
+        }
+
+        btnSubmitSymptoms.setOnClickListener {
+
+            Log.e("QuestionnaireDebug", "---- SUBMIT PRESSED ----")
+            Log.e("QuestionnaireDebug", "questionnaireLayout childCount = ${questionnaireLayout.childCount}")
+
+            val selectedSymptoms = mutableListOf<String>()
+
+            for (i in 0 until questionnaireLayout.childCount) {
+                val row = questionnaireLayout.getChildAt(i)
+
+                Log.e("QuestionnaireDebug", "Row $i found. tag=${row.tag}")
+
+                // Only process question rows (rows with a REAL symptomKey)
+                if (row.tag is String) {
+                    val symptomKey = row.tag as String
+                    Log.e("QuestionnaireDebug", "Row $i is a question row. symptomKey=$symptomKey")
+
+                    // FIX: Find YES/NO checkboxes by tag
+                    val yesBox = row.findViewWithTag<CheckBox>("yes")
+                    val noBox = row.findViewWithTag<CheckBox>("no")
+
+                    Log.e(
+                        "QuestionnaireDebug",
+                        "Row $i checkboxes: yesBox=$yesBox isChecked=${yesBox?.isChecked}, noBox=$noBox isChecked=${noBox?.isChecked}"
+                    )
+
+                    // FIX: Add symptom only if YES is selected
+                    if (yesBox?.isChecked == true) {
+                        selectedSymptoms.add(symptomKey)
+                        Log.e("QuestionnaireDebug", "Row $i → YES selected → added symptom: $symptomKey")
+                    } else {
+                        Log.e("QuestionnaireDebug", "Row $i → YES not selected")
+                    }
+
+                } else {
+                    Log.e("QuestionnaireDebug", "Row $i skipped (no valid tag)")
+                }
+            }
+
+            Log.e("QuestionnaireDebug", "FINAL selectedSymptoms = $selectedSymptoms")
+
+            // Update engine
+            symptomEngine.updateFromCheckboxSelections(selectedSymptoms)
+            Log.e("QuestionnaireDebug", "Engine after update = ${symptomEngine.getConfirmedSymptoms()}")
+
+            // Deep session state
+            deepManager.setQuestionnaireCompleted()
+            deepManager.advancePhaseIfNeeded()
+
+            questionnaireContainer.visibility = View.GONE
+            inputBar.visibility = View.VISIBLE
+            recyclerView.visibility = View.VISIBLE
+
+            enableChatInput()
+
+            // Send to AI
+            sendDiagnosisMessage(selectedSymptoms)
+        }
+
+
+
+
+
+
+
+
+
+
 
         emergencyOverlay.visibility = View.GONE
 
@@ -166,20 +435,8 @@ class ChatActivity : AppCompatActivity() {
             }
         }
 
-
         if (sessionId != null) {
             loadExistingSession()
-
-        } else if (!openedFromInsightsCard) {
-
-            // Ask user which type of session they want
-            addMessage(
-                "Before we begin, would you like a 5‑Minute Check‑In or a Deep Support Session today?",
-                isUser = false
-            )
-
-            // Wait for user response in onSendMessage()
-            sessionMode = null
         }
 
         // Handle physical "Enter" key and keyboard "Send" action
@@ -192,57 +449,35 @@ class ChatActivity : AppCompatActivity() {
 
             if (isSendAction || isEnterKeyDown) {
                 val userText = messageInput.text.toString()
+
                 if (userText.isNotBlank()) {
                     userHasSpoken = true
                     addMessage(userText, isUser = true)
                     messageInput.setText("")
 
-                    // If sessionMode not chosen yet, try to infer from this message
+                    // 🚀 NEW CLEAN LOGIC:
+                    // Session mode must be chosen via buttons before typing.
                     if (sessionMode == null) {
-                        val choice = userText.lowercase()
-
-                        sessionMode = when {
-                            choice.contains("quick") || choice.contains("check") || choice.contains("5") ->
-                                "quick"
-
-                            choice.contains("deep") || choice.contains("long") || choice.contains("support") ->
-                                "deep"
-
-                            else -> {
-                                addMessage(
-                                    "Just to confirm — would you prefer a 5‑Minute Check‑In or a Deep Support Session?",
-                                    isUser = false
-                                )
-                                // Do not call processUserMessage here; wait for the user's next input
-                                return@setOnEditorActionListener true
-                            }
-                        }
-
-                        // Start the appropriate flow message
-                        if (sessionMode == "quick") {
-                            addMessage(
-                                "Great — we’ll do a short 5‑Minute Check‑In. What’s been on your mind today?",
-                                isUser = false
-                            )
-                        } else {
-                            addMessage(
-                                "Alright — we’ll take our time with a Deep Support Session. What’s been weighing on you lately?",
-                                isUser = false
-                            )
-                        }
-
-                        // Process the same message that selected the session mode
-                        processUserMessage(userText)
-                    } else {
-                        // Normal flow after session type chosen
-                        processUserMessage(userText)
+                        addMessage(
+                            if (selectedLanguage == "ur")
+                                "براہ کرم پہلے سیشن کی قسم منتخب کریں۔"
+                            else
+                                "Please select a session type first.",
+                            isUser = false
+                        )
+                        return@setOnEditorActionListener true
                     }
+
+                    // 🚀 NORMAL CHATBOT LOGIC (session already chosen)
+                    processUserMessage(userText)
                 }
-                true // Consume the event
+
+                true // consume event
             } else {
-                false // Pass the event on
+                false // pass event
             }
         }
+
 
 
 
@@ -254,48 +489,26 @@ class ChatActivity : AppCompatActivity() {
                 addMessage(userText, isUser = true)
                 messageInput.setText("")
 
-                // 🔥 SESSION MODE SELECTION LOGIC
+                // 🚀 NEW CLEAN LOGIC:
+                // Session mode is ALWAYS chosen via buttons now.
+                // No need to infer "quick" or "deep" from typed text.
                 if (sessionMode == null) {
-                    val choice = userText.lowercase()
-
-                    sessionMode = when {
-                        choice.contains("quick") || choice.contains("check") || choice.contains("5") ->
-                            "quick"
-
-                        choice.contains("deep") || choice.contains("long") || choice.contains("support") ->
-                            "deep"
-
-                        else -> {
-                            addMessage(
-                                "Just to confirm — would you prefer a 5‑Minute Check‑In or a Deep Support Session?",
-                                isUser = false
-                            )
-                            return@setOnClickListener
-                        }
-                    }
-
-                    // Start the appropriate flow
-                    if (sessionMode == "quick") {
-                        addMessage(
-                            "Great — we’ll do a short 5‑Minute Check‑In. What’s been on your mind today?",
-                            isUser = false
-                        )
-                    } else {
-                        addMessage(
-                            "Alright — we’ll take our time with a Deep Support Session. What’s been weighing on you lately?",
-                            isUser = false
-                        )
-                    }
-
-                    // 🔥 Process the SAME message that selected the session mode
-                    processUserMessage(userText)
+                    // Safety check — should never happen unless UI is bypassed
+                    addMessage(
+                        if (selectedLanguage == "ur")
+                            "براہ کرم پہلے سیشن کی قسم منتخب کریں۔"
+                        else
+                            "Please select a session type first.",
+                        isUser = false
+                    )
                     return@setOnClickListener
                 }
 
-                // 🔥 NORMAL CHATBOT LOGIC (after session type chosen)
+                // 🚀 NORMAL CHATBOT LOGIC (session already chosen)
                 processUserMessage(userText)
             }
         }
+
 
 
 
@@ -308,6 +521,14 @@ class ChatActivity : AppCompatActivity() {
             showSaveDialog()
         }
     }
+
+    private fun enableChatInput() {
+        messageInput.isEnabled = true
+        sendButton.isEnabled = true
+        voiceButton.isEnabled = true
+    }
+
+
     private fun loadExistingSession() {
         val user = auth.currentUser ?: return
         val id = sessionId ?: return
@@ -324,8 +545,26 @@ class ChatActivity : AppCompatActivity() {
 
                 sessionJustLoaded = true
 
+                // ⭐ 1. Clean messages BEFORE adding them to UI
+                val cleaned = session.messages
+                    .filter { it.text != null && it.text.isNotBlank() } // remove null/empty
+                    .filter { msg ->
+                        // remove fallback messages
+                        val fallbackPatterns = listOf(
+                            "connection trouble",
+                            "having some trouble",
+                            "didn’t catch that",
+                            "didn't catch that",
+                            "say that again"
+                        )
+                        fallbackPatterns.none { pattern ->
+                            msg.text!!.contains(pattern, ignoreCase = true)
+                        }
+                    }
+
+                // ⭐ 2. Replace your old logic with cleaned messages
                 messages.clear()
-                messages.addAll(session.messages)
+                messages.addAll(cleaned)
 
                 adapter.notifyDataSetChanged()
 
@@ -333,7 +572,7 @@ class ChatActivity : AppCompatActivity() {
                 recyclerView.post {
                     recyclerView.scrollToPosition(messages.size - 1)
 
-                    // ⭐ After loading an existing session, offer deep support
+                    // ⭐ 3. Add deep session invitation (safe)
                     addMessage(
                         "If you'd like to continue this with more depth, I can guide you through a Deep Support Session.",
                         isUser = false
@@ -341,6 +580,7 @@ class ChatActivity : AppCompatActivity() {
                 }
             }
     }
+
 
     // ---------------------------------------------------------
     // ADD MESSAGE
@@ -392,16 +632,29 @@ class ChatActivity : AppCompatActivity() {
     // PROCESS USER MESSAGE (Soft + Optional Symptom Flow)
     // ---------------------------------------------------------
     private fun processUserMessage(userMessage: String) {
+
+        Log.d("LifecycleCheck", "🟦 processUserMessage() called")
+        Log.d("LifecycleCheck", "Activity instance hash = ${this.hashCode()}")
+        Log.d("LifecycleCheck", "deepManager at start = $deepManager")
+        Log.d("LifecycleCheck", "sessionMode at start = $sessionMode")
+        Log.d("LifecycleCheck", "sessionStatus at start = $sessionStatus")
+
+        Log.d("ProcessUserMessage", "🔵 Function entered with message: $userMessage")
+
         try {
 
-            // =====================================================
-            // NORMALISE SESSION MODE (BUT DO NOT OVERRIDE IT)
-            // =====================================================
             val mode = sessionMode?.trim()?.lowercase() ?: ""
 
-            // If no session mode chosen yet → do nothing.
-            // The send button logic will handle session selection.
+            Log.d("ProcessUserMessage", "Session mode detected: '$mode'")
+
             if (mode.isEmpty()) {
+                addMessage(
+                    if (selectedLanguage == "ur")
+                        "براہ کرم پہلے سیشن کی قسم منتخب کریں۔"
+                    else
+                        "Please select a session type first.",
+                    isUser = false
+                )
                 return
             }
 
@@ -419,13 +672,11 @@ class ChatActivity : AppCompatActivity() {
                 Here are some support options you can use right now:
 
                 $emergencyContacts
-
-                If you'd like, tap the button below for immediate help.
                 """.trimIndent(),
                     isUser = false
                 )
 
-                CoroutineScope(Dispatchers.Main).launch {
+                lifecycleScope.launch {
                     delay(5000)
                     showEmergencyButton()
                 }
@@ -434,113 +685,220 @@ class ChatActivity : AppCompatActivity() {
             }
 
             // =====================================================
-            // QUICK SESSION → MODEL A ONLY
+            // QUICK MODE
             // =====================================================
             if (mode == "quick") {
 
-                val emotion = modelRunner.runModelA(userMessage)
+                val emotion = modelRunner.runModelA(userMessage).toString()
 
                 sendToAI(
                     userMessage = userMessage,
-                    emotion = emotion,
-                    disorder = "not_applicable",
-                    interpretation = emotion
+                    disorder = "quick_mode",
+                    phase = "QUICK",
+                    cbtExercises = emptyList()
                 )
+
 
                 return
             }
 
             // =====================================================
-            // DEEP SUPPORT SESSION → MODEL B ONLY
+            // DEEP MODE ONLY
             // =====================================================
-            if (mode == "deep") {
+            // =====================================================
+// DEEP SESSION MODE
+// =====================================================
+            if (mode != "deep") return
 
-                extractSymptomsFromNaturalLanguage(userMessage)
+            Log.d("ProcessUserMessage", "🟣 DEEP mode triggered")
 
-                val disorder = modelRunner.runModelB(getSymptomVector())
+            try {
 
-                sendToAI(
-                    userMessage = userMessage,
-                    emotion = "not_applicable",
-                    disorder = disorder,
-                    interpretation = disorder
-                )
+                Log.d("DeepSession", "Current phase: ${deepManager.phase}")
 
-                return
+                // =====================================================
+                // 1. ASSESSMENT (QUESTIONNAIRE ONLY)
+                // =====================================================
+                if (deepManager.phase == DeepPhase.ASSESSMENT) {
+
+                    // User should NOT type symptoms here.
+                    // They must use the questionnaire UI.
+                    addMessage(
+                        "Please use the questionnaire above to select any symptoms you’ve been experiencing.",
+                        isUser = false
+                    )
+                    return
+                }
+
+                // =====================================================
+                // 2. DIAGNOSIS (MESSAGE-BASED)
+                // =====================================================
+                if (deepManager.phase == DeepPhase.DIAGNOSIS) {
+
+                    deepManager.setDiagnosisDelivered()
+                    deepManager.advancePhaseIfNeeded()
+
+                    sendDiagnosisMessage(symptomEngine.getConfirmedSymptoms())
+
+                    return
+                }
+
+                // =====================================================
+                // 3. CBT (MESSAGE-BASED)
+                // =====================================================
+                if (deepManager.phase == DeepPhase.CBT) {
+
+                    isUserInputLocked = true
+
+                    val disorder = lastDiagnosis ?: "general_distress"
+
+                    lifecycleScope.launch(Dispatchers.IO) {
+
+                        val exercises = try {
+                            cbtGenerator.generateHybridExercises(
+                                disorder = disorder,
+                                symptoms = symptomEngine.getSymptoms(),
+                                userMessage = userMessage
+                            ) { prompt ->
+
+                                val response = client.chatCompletion(
+                                    ChatCompletionRequest(
+                                        model = ModelId("gpt-4o-mini"),
+                                        messages = listOf(
+                                            ChatMessage(ChatRole.User, prompt)
+                                        )
+                                    )
+                                )
+
+                                response.choices.first().message?.content ?: ""
+                            }
+
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+
+                        withContext(Dispatchers.Main) {
+
+                            isUserInputLocked = false
+
+                            sendToAI(
+                                userMessage = userMessage,
+                                disorder = disorder,
+                                phase = "CBT",
+                                cbtExercises = exercises
+                            )
+
+                        }
+                    }
+
+                    return
+                }
+
+            } catch (e: Exception) {
+                Log.e("DeepSession", "Error in deep session block", e)
             }
 
         } catch (e: Exception) {
-            runOnUiThread {
-                addMessage("ONNX Error: ${e.message}", isUser = false)
+                Log.e("DeepSession", "Error: ${e.message}")
             }
-        }
+
+
+
     }
 
 
 
 
-    // ---------------------------------------------------------
-    // NATURAL LANGUAGE SYMPTOM EXTRACTION (Soft)
-    // ---------------------------------------------------------
-    private fun extractSymptomsFromNaturalLanguage(text: String) {
-        val lower = text.lowercase()
+    fun cleanMessagesForOpenAI(rawMessages: List<Message>): List<OpenAIMessage> {
 
-        // Emotional symptoms
-        val sadnessWords = listOf("sad", "down", "low", "depressed", "empty", "unhappy")
-        val anxietyWords = listOf("anxious", "nervous", "on edge", "panic", "worried", "scared")
-        val angerWords = listOf("angry", "furious", "irritated", "mad", "frustrated", "pissed")
+        val fallbackPatterns = listOf(
+            "connection trouble",
+            "having some trouble",
+            "didn’t catch that",
+            "didn't catch that",
+            "say that again"
+        )
 
-        // Physical symptoms
-        val fatigueWords = listOf("tired", "exhausted", "fatigued", "no energy", "drained")
-        val sleepWords = listOf("insomnia", "can't sleep", "sleeping badly", "awake all night", "tossing and turning")
-        val restlessnessWords = listOf("restless", "fidgety", "can't sit still", "agitated", "pacing")
-
-        // Behavioural symptoms
-        val stressedWords = listOf("stressed", "overwhelmed", "pressure", "burnt out", "too much going on")
-        val antisocialWords = listOf("antisocial", "withdrawn", "avoiding people", "isolating", "staying in", "don't want to talk")
-        val overreactingWords = listOf("overreacting", "snapped", "too sensitive", "melt down", "explosive", "volatile")
-        val socialMediaWords = listOf("doomscrolling", "scrolling", "social media", "instagram", "tiktok", "addicted to my phone")
-
-        // Cognitive symptoms
-        val selfBlameWords = listOf("my fault", "blaming myself", "i failed", "guilty", "ashamed", "failure")
-        val traumaWords = listOf("nightmare", "bad dream", "flashback", "reliving", "traumatic memory", "can't forget")
-        val weightGainWords = listOf("weight gain", "gained weight", "eating more", "heavier", "appetite increased")
-
-        // Mapping to symptomState indices (your existing 0–12 mapping)
-        if (sadnessWords.any { lower.contains(it) }) symptomState[0] = 1f
-        if (fatigueWords.any { lower.contains(it) }) symptomState[1] = 1f
-        if (sleepWords.any { lower.contains(it) }) symptomState[2] = 1f
-        if (anxietyWords.any { lower.contains(it) }) symptomState[3] = 1f
-        if (restlessnessWords.any { lower.contains(it) }) symptomState[4] = 1f
-        if (stressedWords.any { lower.contains(it) }) symptomState[5] = 1f
-        if (angerWords.any { lower.contains(it) }) symptomState[6] = 1f
-        if (socialMediaWords.any { lower.contains(it) }) symptomState[7] = 1f
-        if (antisocialWords.any { lower.contains(it) }) symptomState[8] = 1f
-        if (selfBlameWords.any { lower.contains(it) }) symptomState[9] = 1f
-        if (traumaWords.any { lower.contains(it) }) symptomState[10] = 1f
-        if (overreactingWords.any { lower.contains(it) }) symptomState[11] = 1f
-        if (weightGainWords.any { lower.contains(it) }) symptomState[12] = 1f
-    }
-
-
-
-
-
-    // ---------------------------------------------------------
-    // SYMPTOM VECTOR FOR MODEL B
-    // ---------------------------------------------------------
-    private fun getSymptomVector(expectedLen: Int = 24): FloatArray {
-        // Ensure symptomState has at least expectedLen entries
-        val vector = FloatArray(expectedLen) { idx ->
-            val v = if (idx < symptomState.size) symptomState[idx] else 0f
-            when {
-                v.isNaN() -> 0f
-                v < 0f -> 0f
-                else -> v
+        return rawMessages
+            .filter { it.text != null && it.text.isNotBlank() }
+            .filter { msg ->
+                fallbackPatterns.none { pattern ->
+                    msg.text!!.contains(pattern, ignoreCase = true)
+                }
             }
-        }
-        return vector
+            .map { msg ->
+                val role = if (msg.user == true) "user" else "assistant"
+                OpenAIMessage(role = role, content = msg.text!!.trim())
+            }
+            .takeLast(3)
     }
+
+
+
+    private fun sendDiagnosisMessage(selectedSymptoms: List<String>) {
+
+        val symptomText = selectedSymptoms.joinToString(", ")
+
+        // Debug log
+        Log.e(
+            "DiagnosisDebug",
+            "sendDiagnosisMessage() called with selectedSymptoms=" + selectedSymptoms +
+                    " | count=" + selectedSymptoms.size +
+                    " | symptomEngineConfirmed=" + symptomEngine.getConfirmedSymptoms() +
+                    " | engineCount=" + symptomEngine.getConfirmedSymptoms().size
+        )
+
+        // 1. Get evidence
+        val evidence = symptomEngine.getDiagnosisEvidence()
+
+        // 2. Convert to Low/Medium/High labels
+        val labels = evidence.toWeightLabels()
+
+        // 3. Build summary
+        val labelSummary = """
+        Anxiety: ${labels["anxiety"]}
+        Depression: ${labels["depression"]}
+        Stress: ${labels["stress"]}
+        Loneliness: ${labels["loneliness"]}
+    """.trimIndent()
+
+        // 4. Build prompt
+        val prompt = """
+You are diagnosing the user based on selected symptoms.
+
+SYMPTOMS:
+$symptomText
+
+EVIDENCE LEVELS (Low / Medium / High):
+$labelSummary
+
+TASK:
+- Display the evidence levels clearly before giving the diagnosis
+- Explain that these levels represent relative indicators, not probabilities or certainties
+- Identify the most likely disorder(s)
+- Include disorders from the dataset AND disorders not in the dataset
+- Keep the tone supportive and non-clinical
+- Provide a short explanation
+""".trimIndent()
+
+        addMessage("Thanks — let me take a look at these symptoms.", false)
+
+        sendToAI(
+            userMessage = prompt,
+            disorder = "pending",
+            phase = "DIAGNOSIS",
+            cbtExercises = emptyList()
+        )
+
+        deepManager.setDiagnosisDelivered()
+        deepManager.advancePhaseIfNeeded()
+    }
+
+
+
+
+
+
 
 
 
@@ -550,221 +908,231 @@ class ChatActivity : AppCompatActivity() {
     // ---------------------------------------------------------
     private fun sendToAI(
         userMessage: String,
-        emotion: String,
         disorder: String,
-        interpretation: String
+        phase: String,
+        cbtExercises: List<String> = emptyList()
     ) {
-        val client = OpenAI(token = openAiKey)
+        Log.d("AI_DEBUG", "---- sendToAI CALLED ----")
+        Log.d("AI_DEBUG", "User message: $userMessage")
+        Log.d("AI_DEBUG", "Disorder: $disorder")
+        Log.d("AI_DEBUG", "Phase: $phase")
+        Log.d("AI_DEBUG", "CBT exercises count: ${cbtExercises.size}")
+        Log.d("AI_DEBUG", "Session mode: $sessionMode")
 
-        val isStartOfSession = isFirstAiResponse && !sessionJustLoaded && !openedFromInsightsCard
+        // Clean history for OpenAI
+        val cleanedHistory = cleanMessagesForOpenAI(messages)
 
-        val symptomLabels = mapOf(
-            0 to "Sadness/Mood",
-            1 to "Fatigue/Energy",
-            2 to "Sleep issues",
-            3 to "Anxiety/Nervousness",
-            4 to "Restlessness",
-            5 to "Stress levels",
-            6 to "Anger/Irritability",
-            7 to "Social media usage",
-            8 to "Social withdrawal",
-            9 to "Self-blame/Guilt",
-            10 to "Nightmares/Traumatic memories",
-            11 to "Emotional reactivity",
-            12 to "Weight/Appetite changes"
-        )
-
-        val symptomsConfirmed = symptomState.withIndex()
-            .filter { it.value == 1f }
-            .map { symptomLabels[it.index] ?: "Symptom_${it.index}" }
-            .joinToString(", ")
-            .ifBlank { "None confirmed yet" }
-
-        val knownCount = symptomState.count { it == 1f }
-
-        val recentHistory = messages.takeLast(6).joinToString("\n") {
-            if (it.user) "User: ${it.text}" else "Assistant: ${it.text}"
+        val historyText = cleanedHistory.joinToString("\n") { msg ->
+            "${msg.role.uppercase()}: ${msg.content}"
         }
 
+        // Symptoms (from questionnaire only)
+        val symptomsText = symptomEngine.getConfirmedSymptomsText()
+
+        // CBT exercises text
+        val cbtExercisesText = if (cbtExercises.isEmpty()) {
+            "None available"
+        } else {
+            cbtExercises.joinToString("\n") { "- $it" }
+        }
+
+        // Session status (simplified)
+        val sessionStatus = if (isFirstAiResponse) "NEW" else "CONTINUING"
+
+        Log.d(
+            "DeepSessionDebug",
+            "symptomsConfirmed=" + symptomEngine.getConfirmedSymptoms() +
+                    " | symptomCount=" + symptomEngine.getConfirmedSymptoms().size +
+                    " | symptomsText=" + symptomEngine.getConfirmedSymptomsText() +
+                    " | phase=" + phase +
+                    " | sessionMode=" + sessionMode +
+                    " | sessionStatus=" + sessionStatus
+        )
+
+
+
         // ---------------------------------------------------------
-        // QUICK SESSION PROMPT (5‑Minute Check‑In)
+        // QUICK SESSION PROMPT
         // ---------------------------------------------------------
         val quickPrompt = """
-[MODEL SELECTION]
-Use Model A exclusively. 
-Model A contains emotions associated with depression (e.g., sadness, anger, worthlessness, irritability, guilt, hopelessness).
+[ROLE]
+You are a supportive assistant for a 5‑minute emotional check‑in.
 
 [CONTEXT]
-- Session Mode: QUICK (5‑Minute Check‑In)
-- This is a short, supportive emotional check‑in.
+- Mode: QUICK
+- Respond ONLY to the latest user message.
 - Ignore all previous conversation history.
-- Do NOT collect symptoms.
-- Do NOT ask questions.
-- Do NOT follow CBT phases.
-- Do NOT continue any previous diagnostic flow.
-
-[LATEST USER MESSAGE]
-"$userMessage"
-
-──────────────────────────────────────────────────────────
-QUICK SESSION RULES — MODEL A ONLY
-──────────────────────────────────────────────────────────
-Your job is to:
-1) Identify the dominant emotion using Model A  
-2) Determine whether the emotion aligns with depression‑related patterns  
-3) Provide:
-   - A brief emotional interpretation  
-   - ONE personalised CBT recommendation  
-   - A warm closing message  
-   - A gentle invitation to begin a Deep Support Session  
-
-STRICT PROHIBITIONS:
 - No questions.
 - No symptom collection.
-- No multi‑step CBT.
-- No exploration of triggers, thoughts, or behaviours.
-- No continuation of previous threads.
+- No CBT phases.
 
-──────────────────────────────────────────────────────────
-CRISIS DETECTION (ALWAYS FIRST)
-──────────────────────────────────────────────────────────
+[USER MESSAGE]
+"$userMessage"
+
+────────────────────────────────────────
+SAFETY CHECK
+────────────────────────────────────────
 If the user expresses suicide, self‑harm, intent to harm others, or extreme hopelessness:
-Respond ONLY with empathy + grounding + safety resources:
-{emergencyContacts}
+Respond with empathy, grounding, and encourage reaching out to someone they trust or a professional.
+Do not continue the Quick Session structure.
 
-──────────────────────────────────────────────────────────
-RESPONSE STYLE
-──────────────────────────────────────────────────────────
-- Warm, concise, emotionally attuned.
-- Mirror the user’s emotional tone.
-- Keep the entire session under 5 minutes.
-- End the session after the recommendation + invitation.
+────────────────────────────────────────
+RESPONSE FORMAT
+────────────────────────────────────────
+If emotional content is present:
+1) Emotional interpretation  
+2) ONE simple CBT suggestion  
+3) Warm closing  
+4) Invitation to Deep Support Session  
+
+If no emotional content:
+Respond with exactly:
+"I'm here with you. Could you share a bit about what you're feeling right now?"
 """.trimIndent()
-
-
 
         // ---------------------------------------------------------
         // DEEP SUPPORT SESSION PROMPT
         // ---------------------------------------------------------
-        val deepPrompt ="""
-[MODEL SELECTION]
-Use Model B exclusively.
-Model B contains symptoms and behavioural/emotional patterns for depression, anxiety, stress, loneliness, anger, and related conditions.
+        val builtDeepPrompt = """
+[ROLE]
+You are a supportive CBT‑informed conversational assistant operating inside a structured therapy system.
+You do NOT control session phases. You only respond according to the phase provided.
 
-[CONTEXT]
-- Current Emotion: $emotion
-- Detected Pattern: $disorder
-- Internal Interpretation: $interpretation
-- Confirmed Symptoms: $symptomsConfirmed (Total: $knownCount/24)
-- Session Status: ${if (isStartOfSession) "NEW" else "CONTINUING"}
-- Session Mode: DEEP SUPPORT SESSION
+────────────────────────────────────────
+[SESSION CONTEXT]
+────────────────────────────────────────
+- Phase: $phase
+- Mode: DEEP SUPPORT SESSION
+- Session Status: $sessionStatus
 
-[RECENT CONVERSATION HISTORY]
-$recentHistory
+────────────────────────────────────────
+[SYMPTOMS SELECTED BY USER]
+────────────────────────────────────────
+$symptomsText
 
-[LATEST USER MESSAGE]
+────────────────────────────────────────
+[RECENT HISTORY]
+────────────────────────────────────────
+$historyText
+
+────────────────────────────────────────
+[USER MESSAGE]
+────────────────────────────────────────
 "$userMessage"
 
-──────────────────────────────────────────────────────────
-DEEP SUPPORT SESSION RULES — MODEL B
-──────────────────────────────────────────────────────────
-Your goal is to explore the user’s emotional and behavioural experience in a natural, human way.
+────────────────────────────────────────
+[CBT EXERCISES]
+────────────────────────────────────────
+$cbtExercisesText
 
-- Ask ONE meaningful follow‑up question per turn.
-- The question MUST be based on what the user actually said.
-- Do NOT repeat the same question type.
-- Choose the question category based on the user’s message:
-  • If they express an emotion → explore the emotion  
-  • If they describe a behaviour → explore the behaviour  
-  • If they mention physical symptoms → explore the physical symptoms  
-  • If they describe thoughts → explore the thoughts  
-  • If they describe triggers → explore the triggers  
+────────────────────────────────────────
+SAFETY CHECK
+────────────────────────────────────────
+If the user expresses suicide, self‑harm, intent to harm others, or extreme hopelessness:
+- Respond with immediate empathy and validation
+- Do NOT continue structured content
+- Encourage reaching out to someone they trust or a professional
+- Keep the response short, calm, and supportive
 
-- Once the user provides:
-  • ≥3 symptoms OR  
-  • rich emotional/behavioural detail  
-  → Move automatically to diagnosis.
+────────────────────────────────────────
+RESPONSE RULES
+────────────────────────────────────────
+- Respond naturally, warmly, and conversationally
+- Do NOT mention or explain phases explicitly
+- Do NOT control progression of the session
+- Focus ONLY on the user’s latest message
+- Keep responses concise and human‑like
+- Ask ONLY ONE question per response (unless in DIAGNOSIS or CBT phases)
 
-──────────────────────────────────────────────────────────
-PHASE 0 — CRISIS DETECTION
-──────────────────────────────────────────────────────────
-If crisis → respond ONLY with empathy + grounding + safety resources:
-$emergencyContacts
+────────────────────────────────────────
+PHASE BEHAVIOUR (STYLE ONLY)
+────────────────────────────────────────
 
-──────────────────────────────────────────────────────────
-PHASE 1 — FLEXIBLE SYMPTOM & EMOTION EXPLORATION
-──────────────────────────────────────────────────────────
-- Ask ONE question that directly responds to the user’s message.
-- Do NOT default to physical symptoms.
-- If the user expresses anger, sadness, fear, guilt, hopelessness, or overwhelm:
-  → Explore the emotion.
-- If the user describes behaviours (e.g., isolation, overreacting):
-  → Explore the behaviour.
-- If the user mentions physical symptoms:
-  → Explore the physical symptoms.
-- Never repeat the same question type twice in a row.
+▶ ASSESSMENT
+- User already completed questionnaire
+- Do NOT ask for more symptoms
 
-──────────────────────────────────────────────────────────
-PHASE 2 — DIAGNOSIS (MODEL B)
-──────────────────────────────────────────────────────────
-- Provide a tentative, non‑medical diagnosis.
-- Use CBT formulation:
-  Situation → Thoughts → Emotions → Behaviours → Physical symptoms
-- Validate the user’s emotional experience deeply.
+▶ DIAGNOSIS
+- Provide a gentle, non‑medical explanation of likely disorder(s)
+- Include dataset AND non‑dataset disorders
+- No questions
 
-──────────────────────────────────────────────────────────
-PHASE 3 — CBT RECOMMENDATIONS (MODEL B)
-──────────────────────────────────────────────────────────
-- Provide THREE personalised CBT recommendations.
-- Each must be specific, actionable, and tied to the symptoms or emotions.
+▶ CBT
+- Provide 2–3 personalised CBT exercises
+- Explain each clearly
+- No questions
 
-──────────────────────────────────────────────────────────
-RESPONSE STYLE
-──────────────────────────────────────────────────────────
-- Warm, reflective, non‑clinical.
-- Never ask more than ONE question.
-- Mirror the user’s emotional tone.
-- Respond to the user, not the script.
+────────────────────────────────────────
+IMPORTANT PRINCIPLE
+────────────────────────────────────────
+The external system controls progression.
+You only adapt tone and content to the current phase.
 """.trimIndent()
 
         // ---------------------------------------------------------
-        // SELECT PROMPT BASED ON SESSION MODE
+        // SELECT PROMPT
         // ---------------------------------------------------------
-        val prompt = if (sessionMode == "quick") quickPrompt else deepPrompt
+        val finalPrompt = if (sessionMode == "quick") quickPrompt else builtDeepPrompt
+
+        Log.e("AI_DEBUG", "Final prompt length: ${finalPrompt.length}")
+        Log.e("AI_DEBUG", "Final prompt preview:\n${finalPrompt.take(2000)}")
+
+        // ---------------------------------------------------------
+        // BUILD OPENAI REQUEST
+        // ---------------------------------------------------------
+        val openAIRequest = mutableListOf<OpenAIMessage>()
+
+        openAIRequest += OpenAIMessage("system", finalPrompt)
+
+        if (sessionMode == "quick") {
+            openAIRequest += OpenAIMessage("user", userMessage)
+        } else {
+            val safeHistory = cleanedHistory.takeLast(3)
+            openAIRequest += safeHistory
+            openAIRequest += OpenAIMessage("user", userMessage)
+        }
 
         // ---------------------------------------------------------
         // SEND TO OPENAI
         // ---------------------------------------------------------
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
+                val sdkMessages = openAIRequest.map {
+                    ChatMessage(
+                        role = when (it.role.lowercase()) {
+                            "system" -> ChatRole.System
+                            "assistant" -> ChatRole.Assistant
+                            "user" -> ChatRole.User
+                            else -> ChatRole.User
+                        },
+                        content = it.content
+                    )
+                }
+
                 val response = client.chatCompletion(
                     ChatCompletionRequest(
                         model = ModelId("gpt-4o-mini"),
-                        messages = listOf(
-                            ChatMessage(
-                                role = ChatRole.System,
-                                content = "You are a warm, multilingual Therapy Assistant. You are concise, avoid repetition, and mirror the user's language (English/Urdu)."
-                            ),
-                            ChatMessage(
-                                role = ChatRole.User,
-                                content = prompt
-                            )
-                        ),
+                        messages = sdkMessages,
                         temperature = 0.7
                     )
                 )
 
                 val aiReply = response.choices.first().message?.content ?: "I'm here with you."
 
-                runOnUiThread {
+                withContext(Dispatchers.Main) {
                     addMessage(aiReply, isUser = false)
-                    if (isFirstAiResponse) isFirstAiResponse = false
+                    isFirstAiResponse = false
                     sessionJustLoaded = false
                 }
 
             } catch (e: Exception) {
-                runOnUiThread {
-                    addMessage("I'm listening, but having some connection trouble. Could you say that again?", isUser = false)
+                Log.e("OPENAI_ERROR", "chatCompletion failed", e)
+
+                withContext(Dispatchers.Main) {
+                    addMessage(
+                        "I'm having trouble connecting right now. Could you try again?",
+                        isUser = false
+                    )
                 }
             }
         }
@@ -774,7 +1142,11 @@ RESPONSE STYLE
 
 
 
-    // ---------------------------------------------------------
+
+
+
+
+        // ---------------------------------------------------------
     // SAVE DIALOG (unchanged)
     // ---------------------------------------------------------
     private fun showSaveDialog() {
@@ -896,6 +1268,95 @@ RESPONSE STYLE
         }
     }
 
+    private fun showSymptomQuestionnaire() {
+        questionnaireContainer.visibility = View.VISIBLE
+        inputBar.visibility = View.GONE
+        recyclerView.visibility = View.GONE
+
+        // Remove all dynamic question rows (keep title + submit button)
+        for (i in questionnaireLayout.childCount - 1 downTo 1) {
+            val view = questionnaireLayout.getChildAt(i)
+            if (view.tag is String) {
+                questionnaireLayout.removeViewAt(i)
+            }
+        }
+
+        // Add YES/NO rows
+        for ((symptomKey, questionText) in symptomQuestions) {
+
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 12, 0, 12)
+                tag = symptomKey   // 🔥 FIX #1 — store REAL symptom key
+            }
+
+            val questionLabel = TextView(this).apply {
+                text = questionText
+                textSize = 16f
+                setTextColor(Color.WHITE)
+            }
+
+            val yesBox = CheckBox(this).apply {
+                text = "Yes"
+                tag = "yes"        // 🔥 FIX #2 — correct tag
+                setTextColor(Color.WHITE)
+            }
+
+            val noBox = CheckBox(this).apply {
+                text = "No"
+                tag = "no"         // 🔥 FIX #3 — correct tag
+                setTextColor(Color.WHITE)
+            }
+
+            // Mutually exclusive logic
+            yesBox.setOnCheckedChangeListener { _, isChecked ->
+                if (isChecked) noBox.isChecked = false
+            }
+
+            noBox.setOnCheckedChangeListener { _, isChecked ->
+                if (isChecked) yesBox.isChecked = false
+            }
+
+            val optionsRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(yesBox)
+                addView(noBox)
+            }
+
+            row.addView(questionLabel)
+            row.addView(optionsRow)
+
+            // Insert above submit button
+            questionnaireLayout.addView(row, questionnaireLayout.childCount - 1)
+        }
+    }
 
 
-}
+
+
+
+
+
+
+
+    fun markSessionContinuing() {
+        sessionStatus = "CONTINUING"
+    }
+
+    // Extracts unknown symptoms from AI reply using <symptom:...> tags
+    fun extractUnknownSymptoms(aiReply: String): List<String> {
+        val regex = "<symptom:(.*?)>".toRegex()
+        return regex.findAll(aiReply).map { it.groupValues[1].trim() }.toList()
+    }
+
+
+    fun safe(value: String?, default: String = "unknown"): String {
+        return if (value.isNullOrBlank()) default else value
+    }
+
+
+
+
+
+
+        }
