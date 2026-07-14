@@ -10,6 +10,16 @@ import java.io.FileOutputStream
 import java.nio.FloatBuffer
 import android.util.Log
 import ai.onnxruntime.TensorInfo
+import java.io.FileInputStream
+import java.nio.MappedByteBuffer
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.channels.FileChannel
+import org.tensorflow.lite.Interpreter
+
+
+private const val MODEL_INPUT_DIM = 65
+
 
 
 class OnnxModelRunner(private val context: Context) {
@@ -17,75 +27,17 @@ class OnnxModelRunner(private val context: Context) {
     private val env = OrtEnvironment.getEnvironment()
     private val sessionA: OrtSession
 
-    private val sessionB: OrtSession
 
 
-
-
-
-    private val featureCols = listOf(
-        "feeling.nervous",
-        "panic",
-        "breathing.rapidly",
-        "sweating",
-        "trouble.in.concentration",
-        "having.trouble.in.sleeping",
-        "having.trouble.with.work",
-        "hopelessness",
-        "anger",
-        "over.react",
-        "change.in.eating",
-        "suicidal.thought",
-        "feeling.tired",
-        "close.friend",
-        "social.media.addiction",
-        "weight.gain",
-        "material.possessions",
-        "introvert",
-        "popping.up.stressful.memory",
-        "having.nightmares",
-        "avoids.people.or.activities",
-        "feeling.negative",
-        "trouble.concentrating",
-        "blamming.yourself"
-    )
-
-    private val featureIndexMap: Map<String, Int> = featureCols.mapIndexed { i, name -> name to i }.toMap()
-
-    // Keyword map (reuse or extend inside ONNXModelRunner)
-    private val KEYWORDS: Map<String, List<String>> = mapOf(
-        "feeling.nervous" to listOf("nervous", "on edge", "shaky"),
-        "panic" to listOf("panic attack", "panic"),
-        "breathing.rapidly" to listOf("can't breathe", "breathing rapidly", "short of breath"),
-        "sweating" to listOf("sweat", "sweating", "clammy"),
-        "trouble.in.concentration" to listOf("can't concentrate", "trouble concentrating", "hard to focus"),
-        "having.trouble.in.sleeping" to listOf("can't sleep", "insomnia", "awake all night"),
-        "having.trouble.with.work" to listOf("can't work", "trouble at work", "can't focus at work"),
-        "hopelessness" to listOf("hopeless", "no hope", "give up"),
-        "anger" to listOf("angry", "furious", "irritated", "mad"),
-        "over.react" to listOf("overreact", "snapped", "too sensitive", "melt down"),
-        "change.in.eating" to listOf("eating more", "eating less", "lost appetite", "overeating"),
-        "suicidal.thought" to listOf("suicidal", "want to die", "kill myself", "end my life"),
-        "feeling.tired" to listOf("tired", "exhausted", "no energy"),
-        "close.friend" to listOf("no close friend", "no friends", "no one to talk to"),
-        "social.media.addiction" to listOf("doomscroll", "social media", "instagram", "tiktok", "addicted"),
-        "weight.gain" to listOf("weight gain", "gained weight"),
-        "material.possessions" to listOf("material possessions", "things matter", "buying things"),
-        "introvert" to listOf("introvert", "prefer to be alone", "shy"),
-        "popping.up.stressful.memory" to listOf("flashback", "popping up memory", "reliving"),
-        "having.nightmares" to listOf("nightmare", "bad dream", "nightmares"),
-        "avoids.people.or.activities" to listOf("avoid people", "avoid activities", "isolating"),
-        "feeling.negative" to listOf("feeling negative", "negative thoughts", "down on myself"),
-        "trouble.concentrating" to listOf("trouble concentrating", "can't focus", "mind wanders"),
-        "blamming.yourself" to listOf("blame myself", "my fault", "guilty", "ashamed")
-    )
+    private lateinit var deepSessionInterpreter: Interpreter
 
 
     init {
         sessionA = env.createSession(assetFilePath("modelA.onnx"))
-        sessionB = env.createSession(assetFilePath("modelB.onnx"))
+        deepSessionInterpreter = Interpreter(loadMappedFile("deep_session_multimodel.tflite"))
 
         logAllModelInputs()
+
     }
 
     private fun assetFilePath(assetName: String): String {
@@ -100,89 +52,200 @@ class OnnxModelRunner(private val context: Context) {
         return file.absolutePath
     }
 
-    fun runModelA(text: String): String {
+    fun runModelA(text: String): ModelAResult {
         val input = arrayOf(arrayOf(text))
         val tensor = OnnxTensor.createTensor(env, input)
+
         val result = sessionA.run(mapOf("input" to tensor))
 
-        val output = result[0].value
+        // 1. Extract label (String array → take first element)
+        val labelArray = result[0].value as Array<String>
+        val label = labelArray[0]
 
-        // DEBUG
-        return "DEBUG OUTPUT TYPE: ${output::class.java}, VALUE: $output"
+        // 2. Extract probability map (sequence of OnnxMap)
+        val probSequence = result[1].value as List<*>
+
+        // First element is an OnnxMap
+        val onnxMap = probSequence[0] as ai.onnxruntime.OnnxMap
+
+        // Extract underlying Java Map<String, Float>
+        @Suppress("UNCHECKED_CAST")
+        val probMap = onnxMap.value as Map<String, Float>
+
+        // Convert map values to a FloatArray
+        val probabilities = probMap.values.toFloatArray()
+
+        // Find max probability
+        val maxProb = probabilities.maxOrNull() ?: 0f
+
+        return ModelAResult(
+            label = label,
+            confidence = maxProb,
+            probabilities = probabilities
+        )
     }
-    fun runModelB(symptoms: FloatArray): String {
-        Log.e("ModelB", ">>> CALL STACK <<<", Exception("STACK"))
-        Log.e("ModelB", ">>> runModelB CALLED FROM SOMEWHERE <<<")
 
-        Log.e("ModelB", "Incoming symptoms length = ${symptoms.size}")
-        Log.e("ModelB", "Symptoms = ${symptoms.joinToString()}")
+    data class ModelAResult(
+        val label: String,
+        val confidence: Float,
+        val probabilities: FloatArray
+    )
 
-        if (symptoms.size != 24) {
-            throw IllegalArgumentException("Model B requires exactly 24 features, got ${symptoms.size}")
+
+    private fun loadMappedFile(filename: String): MappedByteBuffer {
+        val afd = context.assets.openFd(filename)
+        val inputStream = FileInputStream(afd.fileDescriptor)
+        val fileChannel = inputStream.channel
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, afd.startOffset, afd.declaredLength)
+    }
+
+
+    fun runDeepSession(inputVector: FloatArray): DeepSessionResult {
+        // Defensive checks
+        if (!::deepSessionInterpreter.isInitialized) {
+            throw IllegalStateException("TFLite interpreter not loaded")
         }
 
-        val inputInfoEntry = sessionB.inputInfo.entries.first()
-        val inputName = inputInfoEntry.key
-        val inputInfo = inputInfoEntry.value.info as TensorInfo
+        // Ensure MODEL_INPUT_DIM is defined and matches training input length
+        if (inputVector.size != MODEL_INPUT_DIM) {
+            Log.e("DeepModel", "Input length ${inputVector.size} != expected $MODEL_INPUT_DIM")
+            throw IllegalArgumentException("Model input dimension mismatch")
+        }
 
-        Log.e("ModelB", "Model input name = $inputName")
-        Log.e("ModelB", "Model input type = ${inputInfo.type}")
-        Log.e("ModelB", "Model input shape = ${inputInfo.shape.contentToString()}")
-        Log.e("ModelB", "Model input rank = ${inputInfo.shape.size}")
+        // Convert inputVector -> ByteBuffer (float32, native order)
+        val inputBuffer = ByteBuffer.allocateDirect(inputVector.size * 4)
+            .order(ByteOrder.nativeOrder())
+        for (f in inputVector) inputBuffer.putFloat(f)
+        inputBuffer.rewind()
 
-        val shape = longArrayOf(1, symptoms.size.toLong())
-        val buffer = FloatBuffer.wrap(symptoms)
-        val tensor = OnnxTensor.createTensor(env, buffer, shape)
+        // Inspect outputs and allocate containers dynamically
+        val outputCount = deepSessionInterpreter.outputTensorCount
+        val outputMap = HashMap<Int, Any>()
+        val outputMeta = mutableListOf<Pair<Int, String>>() // (index, name)
 
-        var result: OrtSession.Result? = null
+        for (i in 0 until outputCount) {
+            try {
+                val t = deepSessionInterpreter.getOutputTensor(i)
+                val name = try { t.name() } catch (_: Exception) { "output_$i" }
+                val shape = t.shape()
+                val length = shape.fold(1) { acc, dim -> acc * dim }
+                val container: Any = when (t.dataType()) {
+                    org.tensorflow.lite.DataType.FLOAT32 -> FloatArray(length)
+                    org.tensorflow.lite.DataType.INT32 -> IntArray(length)
+                    else -> FloatArray(length)
+                }
+                outputMap[i] = container
+                outputMeta.add(Pair(i, name))
+                Log.d("DeepModel", "Output[$i] name=$name shape=${shape.contentToString()} dtype=${t.dataType()}")
+            } catch (e: Exception) {
+                Log.w("DeepModel", "Unable to inspect/allocate output tensor $i: ${e.message}")
+            }
+        }
+
+        // Run inference using the ByteBuffer as the single input
         try {
-            result = sessionB.run(mapOf(inputName to tensor))
-
-            // Output 0 = predicted label index
-            val labelRaw = result[0].value
-            val predictedLabelIndex = when (labelRaw) {
-                is LongArray -> labelRaw[0].toInt()
-                is IntArray -> labelRaw[0]
-                is Array<*> -> labelRaw[0].toString().toInt()
-                else -> labelRaw.toString().toInt()
-            }
-
-            // ⭐ EXACT LOCATION: define your labels here
-            val disorderLabels = listOf("Anxiety", "Depression", "Loneliness", "Stress", "Normal")
-            val disorder = disorderLabels[predictedLabelIndex]
-
-            // (Optional) log probabilities for debugging
-            val probRaw = result[1].value
-            val probs: Map<Long, Float> = when (probRaw) {
-                is ai.onnxruntime.OnnxMap -> probRaw.value as Map<Long, Float>
-                is Map<*, *> -> probRaw as Map<Long, Float>
-                else -> emptyMap()
-            }
-            Log.e("ModelB", "Probabilities = $probs")
-
-            // ⭐ Return ONLY the disorder label
-            return disorder
-
-        } finally {
-            try { tensor.close() } catch (_: Exception) {}
-            try { result?.close() } catch (_: Exception) {}
+            deepSessionInterpreter.runForMultipleInputsOutputs(arrayOf<Any>(inputBuffer), outputMap)
+        } catch (e: Exception) {
+            Log.e("DeepModel", "Inference failed: ${e.message}")
+            throw e
         }
+
+        // Heuristics to map outputs to phq9, gad7, achaRisk, generalDiagnosis, emotionVector
+        var phq9Pred = 0f
+        var gad7Pred = 0f
+        var achaRisk = 0f
+        var generalDiagnosis = -1
+        var emotionVector: FloatArray = FloatArray(0)
+
+        // Name-based mapping
+        for ((index, name) in outputMeta) {
+            val container = outputMap[index]
+            val lname = name.lowercase()
+            when {
+                "phq" in lname || "phq9" in lname -> {
+                    if (container is FloatArray && container.isNotEmpty()) phq9Pred = container[0]
+                }
+                "gad" in lname || "gad7" in lname -> {
+                    if (container is FloatArray && container.isNotEmpty()) gad7Pred = container[0]
+                }
+                "acha" in lname || "risk" in lname -> {
+                    if (container is FloatArray && container.isNotEmpty()) achaRisk = container[0]
+                }
+                "general" in lname || "diagnos" in lname -> {
+                    if (container is IntArray && container.isNotEmpty()) generalDiagnosis = container[0]
+                    else if (container is FloatArray && container.isNotEmpty()) generalDiagnosis = container[0].toInt()
+                }
+                "emotion" in lname || "emo" in lname || "emotion_vector" in lname -> {
+                    if (container is FloatArray) emotionVector = container.copyOf()
+                }
+            }
+        }
+
+        // Shape-based fallback mapping if name-based mapping didn't find everything
+        if (phq9Pred == 0f || gad7Pred == 0f || emotionVector.isEmpty()) {
+            val floatOutputs = outputMap.values.filterIsInstance<FloatArray>()
+            val singleValueOutputs = floatOutputs.filter { it.size == 1 }
+            val multiValueOutputs = floatOutputs.filter { it.size > 1 }
+
+            var singleIndex = 0
+            if (phq9Pred == 0f && singleIndex < singleValueOutputs.size) {
+                phq9Pred = singleValueOutputs[singleIndex][0]; singleIndex++
+            }
+            if (gad7Pred == 0f && singleIndex < singleValueOutputs.size) {
+                gad7Pred = singleValueOutputs[singleIndex][0]; singleIndex++
+            }
+            if (emotionVector.isEmpty() && multiValueOutputs.isNotEmpty()) {
+                emotionVector = multiValueOutputs.maxByOrNull { it.size }?.copyOf() ?: FloatArray(0)
+            }
+            if (generalDiagnosis == -1) {
+                val intOutputs = outputMap.values.filterIsInstance<IntArray>()
+                if (intOutputs.isNotEmpty()) generalDiagnosis = intOutputs.first()[0]
+            }
+        }
+
+        Log.d("DeepModel", "Mapped outputs -> phq9=$phq9Pred gad7=$gad7Pred acha=$achaRisk general=$generalDiagnosis emotionLen=${emotionVector.size}")
+
+        return DeepSessionResult(
+            phq9 = phq9Pred,
+            gad7 = gad7Pred,
+            achaRisk = achaRisk,
+            generalDiagnosis = generalDiagnosis,
+            emotionVector = emotionVector
+        )
     }
-
-
-
 
 
 
     fun logAllModelInputs() {
-        Log.e("ModelB", "===== MODEL B INPUTS =====")
-        for ((name, info) in sessionB.inputInfo) {
+        // Log Model A inputs
+        Log.e("ModelInputs", "===== MODEL A INPUTS =====")
+        for ((name, info) in sessionA.inputInfo) {
             val t = info.info as TensorInfo
-            Log.e("ModelB", "Input name: $name")
-            Log.e("ModelB", "  Type: ${t.type}")
-            Log.e("ModelB", "  Shape: ${t.shape.contentToString()}")
+            Log.e("ModelA", "Input name: $name")
+            Log.e("ModelA", "  Type: ${t.type}")
+            Log.e("ModelA", "  Shape: ${t.shape.contentToString()}")
+        }
+
+        // Log deep TFLite interpreter outputs if loaded
+        if (::deepSessionInterpreter.isInitialized) {
+            Log.e("ModelInputs", "===== DEEP MODEL OUTPUTS =====")
+            val outCount = deepSessionInterpreter.outputTensorCount
+            for (i in 0 until outCount) {
+                try {
+                    val t = deepSessionInterpreter.getOutputTensor(i)
+                    val name = try { t.name() } catch (_: Exception) { "output_$i" }
+                    Log.e("DeepModel", "Output[$i] name=$name shape=${t.shape().contentToString()} dtype=${t.dataType()}")
+                } catch (e: Exception) {
+                    Log.w("DeepModel", "Unable to inspect output tensor $i: ${e.message}")
+                }
+            }
+        } else {
+            Log.e("ModelInputs", "Deep model interpreter not loaded")
         }
     }
+
+
+
 
 
 

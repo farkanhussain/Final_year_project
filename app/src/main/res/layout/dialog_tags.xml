@@ -75,7 +75,7 @@
             android:text="Save"
             android:textColor="@color/white"
             android:backgroundTint="@color/green"
-            app:rippleColor="@color/red"
+            app:rippleColor="@color/light_green"
             app:cornerRadius="12dp"
             style="@style/Widget.MaterialComponents.Button" />
 

@@ -18,6 +18,13 @@ import com.aallam.openai.api.model.ModelId
 import com.aallam.openai.client.OpenAI
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.*
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.view.LayoutInflater
+import android.widget.Button
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -98,21 +105,19 @@ class MainActivity : AppCompatActivity() {
                 R.id.nav_mood_tracking -> startActivity(Intent(this, MoodTrackingActivity::class.java))
                 R.id.nav_journaling -> startActivity(Intent(this, JournalingActivity::class.java))
                 R.id.nav_articles -> startActivity(Intent(this, ArticlesActivity::class.java))
-
             }
             true
         }
 
         // ----------------------------------------------------
-        // LOAD AI PROMPTS INTO THE CARD
+        // LOAD HOMEPAGE CONTENT
         // ----------------------------------------------------
         loadPrompts()
-
         loadWeeklyMoodEmojisHome()
-
         loadTherapyInsights()
 
 
+        showMoodCheckPopup()
 
         // ----------------------------------------------------
         // CARD CLICK → OPEN NEW JOURNAL ENTRY
@@ -132,14 +137,9 @@ class MainActivity : AppCompatActivity() {
             intent.putStringArrayListExtra("therapy_insights", ArrayList(latestInsights))
             intent.putExtra("from_insights_card", true)
             startActivity(intent)
-
         }
-
-
-
-
-
     }
+
 
     // ====================================================
     // 🧠 LOAD PROMPTS INTO HOME CARD
@@ -535,6 +535,109 @@ Use simple language. No clinical terms. No long sentences.
         super.onResume()
         refreshInsightsFromCache()   // 🔥 Regenerate insights using cached messages
     }
+
+    private fun showMoodCheckPopup() {
+
+        val dialogView = layoutInflater.inflate(R.layout.popup_mood_check, null)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+
+
+
+        val moodSelector = dialogView.findViewById<LinearLayout>(R.id.moodSelectorPopup)
+        val submitBtn = dialogView.findViewById<Button>(R.id.submitMoodPopup)
+        val skipBtn = dialogView.findViewById<Button>(R.id.skipMoodPopup)
+
+        var selectedMoodIndex: Int? = null
+
+        // EMOJI CLICK LOGIC
+        for (i in 0 until moodSelector.childCount) {
+            val emojiView = moodSelector.getChildAt(i) as TextView
+
+            emojiView.setOnClickListener {
+
+                val emoji = emojiView.text.toString().trim()
+                selectedMoodIndex = emojiToMoodIndex(emoji)
+
+                Log.d("MOOD_POPUP", "Selected mood emoji=$emoji index=$selectedMoodIndex")
+
+                // Reset alpha
+                for (j in 0 until moodSelector.childCount) {
+                    moodSelector.getChildAt(j).alpha = 0.5f
+                }
+
+                emojiView.alpha = 1f
+            }
+        }
+
+        // SAVE BUTTON
+        submitBtn.setOnClickListener {
+
+            val userId = FirebaseAuth.getInstance().currentUser?.uid
+                ?: run {
+                    Toast.makeText(this, "User not logged in", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+            if (selectedMoodIndex == null) {
+                Toast.makeText(this, "Please select a mood", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val selectedMood = selectedMoodIndex!!
+            val aiMood = selectedMood
+            val difference = 0
+
+            val data = hashMapOf(
+                "mood" to selectedMood,
+                "aiMood" to aiMood,
+                "difference" to difference,
+                "timestamp" to System.currentTimeMillis()
+            )
+
+            FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(userId)
+                .collection("moods")
+                .add(data)
+                .addOnSuccessListener {
+                    Toast.makeText(this, "Mood saved!", Toast.LENGTH_SHORT).show()
+                    loadWeeklyMoodEmojisHome()
+                    dialog.dismiss()
+                }
+                .addOnFailureListener {
+                    Toast.makeText(this, "Failed to save mood", Toast.LENGTH_SHORT).show()
+                }
+        }
+
+        // SKIP BUTTON
+        skipBtn.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        // SHOW THE POPUP
+        dialog.show()
+    }
+
+    fun emojiToMoodIndex(emoji: String): Int {
+        return when (emoji) {
+            "😢" -> 1
+            "😕" -> 2
+            "😐" -> 3
+            "🙂" -> 4
+            "😄" -> 5
+            else -> -1
+        }
+    }
+
+
+
+
+
+
 
 
 

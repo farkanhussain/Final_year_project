@@ -137,8 +137,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-
-    <LinearLayout
+        <LinearLayout
             android:id="@+id/questionnaireLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -159,7 +158,7 @@
                 android:textColor="@color/white"
                 android:paddingBottom="16dp"/>
 
-            <!-- CHECKBOX QUESTIONS WILL BE ADDED PROGRAMMATICALLY -->
+            <!-- All questions will be inserted dynamically here -->
 
             <Button
                 android:id="@+id/btnSubmitSymptoms"
@@ -177,16 +176,22 @@
 
 
 
+
+
+
     <!-- CHAT LIST -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/chatRecyclerView"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:padding="12dp"
+        android:paddingBottom="72dp"
+        android:clipToPadding="false"
         app:layout_constraintTop_toBottomOf="@id/sessionSelector"
         app:layout_constraintBottom_toTopOf="@id/inputBar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
+
 
     <!-- INPUT BAR -->
     <LinearLayout

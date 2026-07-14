@@ -1,56 +1,40 @@
 package com.example.therapy_app
 
 data class DiagnosisEvidence(
-    val anxiety: Float,
-    val depression: Float,
-    val stress: Float,
-    val loneliness: Float
+    val phq9Score: Float,
+    val phq9Severity: String,
+    val gad7Score: Float,
+    val gad7Severity: String
 ) {
 
 
 
 
-    fun strongestLabel(): String =
-        mapOf(
-            "Anxiety" to anxiety,
-            "Depression" to depression,
-            "Stress" to stress,
-            "Loneliness" to loneliness
-        ).maxByOrNull { it.value }?.key ?: "Unknown"
-
-    fun confidence(): Float =
-        listOf(anxiety, depression, stress, loneliness)
-            .maxOrNull() ?: 0f
-
-
-
-}
-
-fun DiagnosisEvidence.toWeights(): Map<String, Int> {
-    return mapOf(
-        "anxiety" to anxiety.toInt(),
-        "depression" to depression.toInt(),
-        "stress" to stress.toInt(),
-        "loneliness" to loneliness.toInt()
-    )
-}
-
-fun DiagnosisEvidence.toWeightLabels(): Map<String, String> {
-
-    fun label(value: Float): String {
+    fun DiagnosisEvidence.strongestCondition(): String {
         return when {
-            value < 2f -> "Low"
-            value < 4f -> "Medium"
-            else -> "High"
+            phq9Score >= 15 && gad7Score >= 15 -> "Severe mixed anxiety‑depression"
+            phq9Score > gad7Score -> "Depression"
+            gad7Score > phq9Score -> "Anxiety"
+            else -> "Unclear"
         }
     }
 
-    return mapOf(
-        "anxiety" to label(anxiety),
-        "depression" to label(depression),
-        "stress" to label(stress),
-        "loneliness" to label(loneliness)
-    )
+
+    fun DiagnosisEvidence.confidence(): Float {
+        val dep = phq9Score / 27f
+        val anx = gad7Score / 21f
+        return maxOf(dep, anx)
+    }
+
+    fun DiagnosisEvidence.toSeverityLabels(): Map<String, String> {
+        return mapOf(
+            "phq9" to phq9Severity,
+            "gad7" to gad7Severity
+        )
+    }
+
+
+
 }
 
 

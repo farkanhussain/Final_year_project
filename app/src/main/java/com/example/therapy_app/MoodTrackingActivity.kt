@@ -7,10 +7,20 @@ import android.widget.*
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.drawerlayout.widget.DrawerLayout
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
+import com.github.mikephil.charting.data.Entry
+import android.graphics.Color
+import com.github.mikephil.charting.charts.BarChart
+import com.github.mikephil.charting.data.BarData
+import com.github.mikephil.charting.data.BarDataSet
+import com.github.mikephil.charting.data.BarEntry
 
 class MoodTrackingActivity : AppCompatActivity() {
 
@@ -101,9 +111,6 @@ class MoodTrackingActivity : AppCompatActivity() {
 
 
 
-        // ----------------------------------------------------
-        // SAVE MOOD TO FIRESTORE
-        // ----------------------------------------------------
         submitBtn.setOnClickListener {
 
             val userId = FirebaseAuth.getInstance().currentUser?.uid
@@ -117,8 +124,14 @@ class MoodTrackingActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
+            // Manual mood entry → AI mood = user mood
+            val aiMood = selectedMood
+            val difference = 0
+
             val data = hashMapOf(
                 "mood" to selectedMood,
+                "aiMood" to aiMood,
+                "difference" to difference,
                 "timestamp" to System.currentTimeMillis()
             )
 
@@ -130,11 +143,14 @@ class MoodTrackingActivity : AppCompatActivity() {
                 .addOnSuccessListener {
                     Toast.makeText(this, "Mood saved!", Toast.LENGTH_SHORT).show()
                     loadWeeklyMoodEmojis()
+                    loadMoodWaveGraph()
+                    loadMoodDifferenceGraph()
                 }
                 .addOnFailureListener {
                     Toast.makeText(this, "Failed to save mood", Toast.LENGTH_SHORT).show()
                 }
         }
+
 
         // ----------------------------------------------------
         // VIEW TRENDS BUTTON
@@ -291,6 +307,87 @@ class MoodTrackingActivity : AppCompatActivity() {
             }
 
     }
+
+    private fun loadMoodWaveGraph() {
+
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val chart = findViewById<LineChart>(R.id.moodWaveChart)
+
+        FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(userId)
+            .collection("moods")
+            .orderBy("timestamp", Query.Direction.ASCENDING)
+            .limit(30)
+            .get()
+            .addOnSuccessListener { snapshot ->
+
+                val entries = snapshot.documents.mapNotNull { doc ->
+                    val mood = doc.getLong("mood")?.toFloat() ?: return@mapNotNull null
+                    val ts = doc.getLong("timestamp")?.toFloat() ?: return@mapNotNull null
+                    Entry(ts, mood)
+                }
+
+                if (entries.isEmpty()) {
+                    chart.clear()
+                    return@addOnSuccessListener
+                }
+
+                val dataSet = LineDataSet(entries, "Mood Over Time").apply {
+                    color = Color.parseColor("#3F51B5")
+                    lineWidth = 2f
+                    circleRadius = 4f
+                    setDrawCircles(true)
+                    setDrawValues(false)
+                    mode = LineDataSet.Mode.CUBIC_BEZIER
+                }
+
+                chart.data = LineData(dataSet)
+                chart.description.text = "Emotional Wave"
+                chart.invalidate()
+            }
+    }
+
+    private fun loadMoodDifferenceGraph() {
+
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val chart = findViewById<BarChart>(R.id.moodDifferenceChart)
+
+        FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(userId)
+            .collection("moods")
+            .orderBy("timestamp", Query.Direction.ASCENDING)
+            .limit(30)
+            .get()
+            .addOnSuccessListener { snapshot ->
+
+                val entries = snapshot.documents.mapNotNull { doc ->
+                    val diff = doc.getLong("difference")?.toFloat() ?: 0f   // fallback
+                    val ts = doc.getLong("timestamp")?.toFloat() ?: return@mapNotNull null
+                    BarEntry(ts, diff)
+                }
+
+
+                if (entries.isEmpty()) {
+                    chart.clear()
+                    return@addOnSuccessListener
+                }
+
+                val dataSet = BarDataSet(entries, "Mood Change").apply {
+                    colors = entries.map { entry ->
+                        if (entry.y >= 0) Color.parseColor("#4CAF50") else Color.parseColor("#F44336")
+                    }
+                    setDrawValues(false)
+                }
+
+                chart.data = BarData(dataSet)
+                chart.description.text = "Mood Improvement / Decline"
+                chart.invalidate()
+            }
+    }
+
+
 
     private fun emojiToMoodInt(emoji: String?): Int {
         return when (emoji) {

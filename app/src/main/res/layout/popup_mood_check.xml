@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="How are you feeling today?"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp"/>
+
+    <!-- EMOJI SCALE -->
+    <LinearLayout
+        android:id="@+id/moodSelectorPopup"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp">
+
+        <TextView android:text="😢" style="@style/moodEmoji"/>
+        <TextView android:text="😕" style="@style/moodEmoji"/>
+        <TextView android:text="😐" style="@style/moodEmoji"/>
+        <TextView android:text="🙂" style="@style/moodEmoji"/>
+        <TextView android:text="😄" style="@style/moodEmoji"/>
+
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/submitMoodPopup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Save Mood"
+        android:backgroundTint="@color/green"
+        android:textColor="@android:color/white"
+        android:layout_marginBottom="12dp"/>
+
+    <Button
+        android:id="@+id/skipMoodPopup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Skip for now"
+        android:backgroundTint="@color/grey"
+        android:textColor="@android:color/white"/>
+
+</LinearLayout>
