@@ -86,11 +86,13 @@ class MFAEnrollmentActivity : AppCompatActivity() {
             verifyCodeAndEnroll(code)
         }
 
-        // ⭐ SKIP BUTTON
+        // ⭐ SKIP BUTTON transfer to the medical conditions page
         skipButton.setOnClickListener {
-            startActivity(Intent(this, MainActivity::class.java))
+            val intent = Intent(this, MedicalConditionsActivity::class.java)
+            startActivity(intent)
             finish()
         }
+
     }
 
     // ⭐ SEND VERIFICATION CODE WITH MFA SESSION

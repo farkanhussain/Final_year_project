@@ -23,6 +23,26 @@ object QuestionnaireData {
         "Becoming easily annoyed or irritable",
         "Feeling afraid as if something awful might happen"
     )
+
+    // ---------------------------------------------------------
+    // ACCHA Depression (12‑month burden + diagnosis history)
+    // ---------------------------------------------------------
+    val achaDepressionFrequency = listOf(
+        "Within the last 12 months, how often have you felt things were hopeless?",
+        "Within the last 12 months, how often have you felt overwhelmed by all you had to do?",
+        "Within the last 12 months, how often have you felt exhausted (not from physical activity)?",
+        "Within the last 12 months, how often have you felt very sad?",
+        "Within the last 12 months, how often have you felt so depressed that it was difficult to function?",
+        "Within the last 12 months, have you seriously considered attempting suicide?",
+        "Within the last 12 months, have you attempted suicide?"
+    )
+
+    val achaDepressionDiagnosis = listOf(
+        "Have you ever been diagnosed with depression?",
+        "If yes, were you diagnosed within the last 12 months?",
+        "If yes, are you currently in therapy for depression?",
+        "If yes, are you currently taking medication for depression?"
+    )
 }
 
 

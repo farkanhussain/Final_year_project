@@ -225,7 +225,7 @@ class MainActivity : AppCompatActivity() {
 
         val fallback = listOf(
             "What emotion is most present right now?",
-            "What thought keeps returning today?",
+            "What thought keep returning today?",
             "What would self-kindness look like today?"
         )
 

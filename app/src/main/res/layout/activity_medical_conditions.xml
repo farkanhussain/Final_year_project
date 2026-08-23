@@ -1,0 +1,326 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:background="@color/beige"
+    android:padding="24dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Toolbar -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbarHealth"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:title="Health Profile (Optional)"
+        android:titleTextColor="@android:color/black"
+        android:background="@color/beige"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <ScrollView
+        android:id="@+id/healthScroll"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        app:layout_constraintTop_toBottomOf="@id/toolbarHealth"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/healthRootLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="24dp">
+
+            <!-- Title -->
+            <TextView
+                android:id="@+id/medicalConditionsTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:text="Medical conditions in the last 12 months"
+                android:textColor="@android:color/black"
+                android:textSize="18sp"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                android:layout_marginBottom="16dp"/>
+
+            <!-- Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/medicalConditionsCard"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardBackgroundColor="@color/red_dark"
+                app:cardCornerRadius="12dp"
+                app:layout_constraintTop_toBottomOf="@id/medicalConditionsTitle"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent">
+
+                <LinearLayout
+                    android:id="@+id/medicalConditionsInnerLayout"
+                    android:orientation="vertical"
+                    android:padding="16dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <!-- Allergy problems -->
+                    <CheckBox
+                        android:id="@+id/allergyCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Allergy problems"
+                        android:textColor="@color/white"/>
+
+                    <!-- Anorexia -->
+                    <CheckBox
+                        android:id="@+id/anorexiaCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Anorexia"
+                        android:textColor="@color/white"/>
+
+                    <!-- Anxiety Disorder -->
+                    <CheckBox
+                        android:id="@+id/anxietyCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Anxiety Disorder"
+                        android:textColor="@color/white"/>
+
+                    <!-- Asthma -->
+                    <CheckBox
+                        android:id="@+id/herpesCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Genital Herpes"
+                        android:textColor="@color/white" />
+
+                    <CheckBox
+                        android:id="@+id/asthmaCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Asthma"
+                        android:textColor="@color/white"/>
+
+                    <!-- Bulimia -->
+                    <CheckBox
+                        android:id="@+id/bulimiaCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Bulimia"
+                        android:textColor="@color/white"/>
+
+                    <!-- Chronic Fatigue Syndrome -->
+                    <CheckBox
+                        android:id="@+id/cfsCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Chronic Fatigue Syndrome"
+                        android:textColor="@color/white"/>
+
+                    <!-- Depression -->
+                    <CheckBox
+                        android:id="@+id/depressionCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Depression"
+                        android:textColor="@color/white"/>
+
+                    <!-- Diabetes -->
+                    <CheckBox
+                        android:id="@+id/diabetesCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Diabetes"
+                        android:textColor="@color/white"/>
+
+                    <!-- Endometriosis -->
+                    <CheckBox
+                        android:id="@+id/endometriosisCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Endometriosis"
+                        android:textColor="@color/white"/>
+
+                    <!-- Genital Herpes -->
+
+                    <!-- Genital warts / HPV -->
+                    <CheckBox
+                        android:id="@+id/hpvCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Genital warts / HPV"
+                        android:textColor="@color/white"/>
+
+                    <!-- Hepatitis B or C -->
+                    <CheckBox
+                        android:id="@+id/hepatitisCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Hepatitis B or C"
+                        android:textColor="@color/white"/>
+
+                    <!-- High blood pressure -->
+                    <CheckBox
+                        android:id="@+id/highBpCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="High blood pressure"
+                        android:textColor="@color/white"/>
+
+                    <!-- High cholesterol -->
+                    <CheckBox
+                        android:id="@+id/highCholesterolCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="High cholesterol"
+                        android:textColor="@color/white"/>
+
+                    <!-- HIV infection -->
+                    <CheckBox
+                        android:id="@+id/hivCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="HIV infection"
+                        android:textColor="@color/white"/>
+
+                    <!-- Repetitive stress injury -->
+                    <CheckBox
+                        android:id="@+id/rsiCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Repetitive stress injury (e.g. carpal tunnel)"
+                        android:textColor="@color/white"/>
+
+                    <!-- Seasonal Affective Disorder -->
+                    <CheckBox
+                        android:id="@+id/sadCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Seasonal Affective Disorder"
+                        android:textColor="@color/white"/>
+
+                    <!-- Substance abuse problem -->
+                    <CheckBox
+                        android:id="@+id/substanceCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Substance abuse problem"
+                        android:textColor="@color/white"/>
+
+                    <!-- Back pain -->
+                    <CheckBox
+                        android:id="@+id/backPainCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Back pain"
+                        android:textColor="@color/white"/>
+
+                    <!-- Broken bone / fracture -->
+                    <CheckBox
+                        android:id="@+id/fractureCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Broken bone / fracture"
+                        android:textColor="@color/white"/>
+
+                    <!-- Bronchitis -->
+                    <CheckBox
+                        android:id="@+id/bronchitisCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Bronchitis"
+                        android:textColor="@color/white"/>
+
+                    <!-- Chlamydia -->
+                    <CheckBox
+                        android:id="@+id/chlamydiaCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Chlamydia"
+                        android:textColor="@color/white"/>
+
+                    <!-- Ear infection -->
+                    <CheckBox
+                        android:id="@+id/earInfectionCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Ear infection"
+                        android:textColor="@color/white"/>
+
+                    <!-- Gonorrhea -->
+                    <CheckBox
+                        android:id="@+id/gonorrheaCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Gonorrhea"
+                        android:textColor="@color/white"/>
+
+                    <!-- Mononucleosis -->
+                    <CheckBox
+                        android:id="@+id/monoCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Mononucleosis"
+                        android:textColor="@color/white"/>
+
+                    <!-- Pelvic Inflammatory Disease -->
+                    <CheckBox
+                        android:id="@+id/pidCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Pelvic Inflammatory Disease"
+                        android:textColor="@color/white"/>
+
+                    <!-- Sinus infection -->
+                    <CheckBox
+                        android:id="@+id/sinusCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Sinus infection"
+                        android:textColor="@color/white"/>
+
+                    <!-- Strep throat -->
+                    <CheckBox
+                        android:id="@+id/strepCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Strep throat"
+                        android:textColor="@color/white"/>
+
+                    <!-- Tuberculosis -->
+                    <CheckBox
+                        android:id="@+id/tbCheck"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Tuberculosis"
+                        android:textColor="@color/white"/>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Continue Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/continueButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:text="Continue"
+                android:textColor="@color/white"
+                android:backgroundTint="@color/green"
+                app:rippleColor="@color/light_green"
+                style="@style/Widget.MaterialComponents.Button"
+                app:cornerRadius="12dp"
+                android:layout_marginTop="16dp"
+                app:layout_constraintTop_toBottomOf="@id/medicalConditionsCard"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"/>
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </ScrollView>
+
+
+</androidx.constraintlayout.widget.ConstraintLayout>

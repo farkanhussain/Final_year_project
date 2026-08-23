@@ -128,8 +128,12 @@ class MfaSignInActivity : AppCompatActivity() {
                 }
 
                 Toast.makeText(this, "Signed in successfully!", Toast.LENGTH_LONG).show()
-                startActivity(Intent(this, MainActivity::class.java))
+
+                // ⭐ Redirect to Medical Conditions page after MFA sign-in
+                val intent = Intent(this, MedicalConditionsActivity::class.java)
+                startActivity(intent)
                 finish()
+
             }
             .addOnFailureListener {
                 Toast.makeText(this, "Failed: ${it.message}", Toast.LENGTH_LONG).show()

@@ -4,8 +4,24 @@ data class DiagnosisEvidence(
     val phq9Score: Float,
     val phq9Severity: String,
     val gad7Score: Float,
-    val gad7Severity: String
-) {
+    val gad7Severity: String,
+
+    val acchaHopeless: Float,
+    val acchaOverwhelmed: Float,
+    val acchaExhausted: Float,
+    val acchaSad: Float,
+    val acchaFunctionalImpairment: Float,
+    val acchaSuicidalThoughts: Float,
+    val acchaSuicideAttempts: Float,
+
+    val acchaDiagnosed: Boolean,
+    val acchaDiagnosed12Months: Boolean,
+    val acchaTherapy: Boolean,
+    val acchaMedication: Boolean
+)
+
+
+{
 
 
 

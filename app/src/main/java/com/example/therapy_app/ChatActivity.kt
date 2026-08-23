@@ -29,6 +29,8 @@ import kotlinx.coroutines.delay
 import android.net.Uri
 import android.util.Log
 import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
@@ -44,21 +46,14 @@ private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
 
 class ChatActivity : AppCompatActivity() {
 
+
+    private var latestAssessmentScores: Map<Int, Int> = emptyMap()
+
+    private var latestSelectedSymptoms: List<String> = emptyList()
     private var loadedTimestamp: Long? = null
 
-    private lateinit var moodConfirmationCard: LinearLayout
-    private lateinit var moodEmoji: TextView
-    private lateinit var btnConfirmMood: Button
-    private lateinit var btnChangeMood: Button
 
 
-    private var aiMoodIndex: Int = -1
-
-
-
-
-
-    private var finalMoodEmoji: String = ""
 
 
     private lateinit var onnxRunner: OnnxModelRunner
@@ -360,16 +355,20 @@ class ChatActivity : AppCompatActivity() {
             // RESET CORE DEEP STATE MACHINE
             // =====================================================
             deepManager = DeepSessionManager()
-            Log.d("DeepButton", "DeepSessionManager reset")
+            Log.d("DeepButton", "DeepSessionManager reset | deepManagerHash=${deepManager.hashCode()}")
 
-            // Start in WAITING_FOR_USER_SYMPTOMS
-            deepManager.resetConversation()
+            // Start in WAITING_FOR_USER_SYMPTOMS (ensure resetConversation sets phase)
+            deepManager.reset()
+            Log.d("DeepButton", "After resetConversation | phase=${deepManager.phase} | contextEmotion=${deepManager.contextEmotion} | contextCause=${deepManager.contextCause} | selectedQuestionnaire=${deepManager.selectedQuestionnaire?.name ?: "null"}")
+
+            // === ESSENTIAL STARTUP LOG (added) ===
+            Log.i("DeepButton", "deepManager created | hash=${deepManager.hashCode()} | phase=${deepManager.phase}")
 
             // =====================================================
             // RESET SYMPTOM ENGINE
             // =====================================================
             symptomEngine = SymptomCollectionEngine(featureIndexMap, featureCols)
-            Log.d("DeepButton", "Symptom engine reset")
+            Log.d("DeepButton", "Symptom engine reset | symptomEngineHash=${symptomEngine.hashCode()}")
 
             // =====================================================
             // RESET SESSION TRACKING FLAGS
@@ -378,17 +377,19 @@ class ChatActivity : AppCompatActivity() {
             sessionJustLoaded = false
             openedFromInsightsCard = false
 
-            Log.d("DeepButton", "Session flags reset")
+            Log.d("DeepButton", "Session flags reset | isFirstAiResponse=$isFirstAiResponse sessionJustLoaded=$sessionJustLoaded openedFromInsightsCard=$openedFromInsightsCard")
 
             enableChatInput()
 
             // =====================================================
             // FIRST THERAPIST-STYLE MESSAGE
             // =====================================================
+            Log.d("DeepButton", "About to send first AI message | deepManagerHash=${deepManager.hashCode()} | phase=${deepManager.phase}")
             addMessage(
                 "I'm here with you. What’s been troubling you lately?",
                 isUser = false
             )
+            Log.d("DeepButton", "First AI message sent")
         }
 
 
@@ -411,79 +412,100 @@ class ChatActivity : AppCompatActivity() {
                 }
             }
 
+            // -----------------------------------------------------
+            // Extract scores
+            // -----------------------------------------------------
             for (i in 0 until questionnaireLayout.childCount) {
                 val row = questionnaireLayout.getChildAt(i)
-                Log.e("QuestionnaireDebug", "Row $i found. tag=${row.tag}")
-
                 val tagObj = row.tag
-                if (tagObj !is Pair<*, *>) {
-                    Log.e("QuestionnaireDebug", "Row $i skipped (no valid question tag Pair)")
-                    continue
-                }
+                if (tagObj !is Pair<*, *>) continue
 
                 val rowTag = tagObj.first as? String
                 val radioGroupId = tagObj.second as? Int
-                if (rowTag == null || radioGroupId == null) {
-                    Log.e("QuestionnaireDebug", "Row $i has invalid tag pair: $tagObj")
-                    continue
-                }
+                if (rowTag == null || radioGroupId == null) continue
 
                 val radioGroup = row.findViewById<RadioGroup>(radioGroupId)
                 val score = extractScoreFromRadioGroup(radioGroup)
-                Log.e("QuestionnaireDebug", "Row $i ($rowTag) → score=$score")
 
-                if (score > 0) {
-                    selectedSymptoms.add(rowTag)
-                    Log.e("QuestionnaireDebug", "Row $i → score>0 → added symptom tag: $rowTag")
-                } else {
-                    Log.e("QuestionnaireDebug", "Row $i → score==0 → not added")
-                }
+                if (score > 0) selectedSymptoms.add(rowTag)
 
                 val index = rowTag.removePrefix("q").toIntOrNull()
                 if (index != null) {
                     assessmentScores[index] = score
                     deepManager.updateAssessmentScore(index, score)
-                } else {
-                    Log.e("QuestionnaireDebug", "Row $i ($rowTag) cannot parse index to update deepManager")
                 }
             }
 
-            Log.e("QuestionnaireDebug", "FINAL selectedSymptoms = $selectedSymptoms")
-            Log.e("QuestionnaireDebug", "Collected assessmentScores = $assessmentScores")
+            // -----------------------------------------------------
+            // Update engine + deep model
+            // -----------------------------------------------------
+            val questionnaire = deepManager.selectedQuestionnaire!!
 
-            // 1. Update engine with questionnaire selections (use the assessment map)
-            symptomEngine.updateFromAssessmentScores(assessmentScores)
-            Log.e("QuestionnaireDebug", "Engine after update = ${symptomEngine.getConfirmedSymptoms()}")
+            symptomEngine.updateFromAssessmentScores(
+                assessmentScores,
+                questionnaire
+            )
 
-            // 2. Build symptom vector for deep model
             val symptomVector = symptomEngine.buildModelInputVector()
-
-            // 3. Run deep model (PHQ‑9, GAD‑7, emotion)
             val result = onnxRunner.runDeepSession(symptomVector)
 
-            // 4. Store model outputs in symptom engine
             symptomEngine.updatePhq9Prediction(result.phq9)
             symptomEngine.updateGad7Prediction(result.gad7)
             symptomEngine.updateEmotion(result.emotionVector)
 
-            Log.e("DeepModel", "PHQ9=${result.phq9}, GAD7=${result.gad7}, Emotion=${result.emotionVector.toList()}")
+            // -----------------------------------------------------
+            // Store results
+            // -----------------------------------------------------
+            latestAssessmentScores = assessmentScores.toMap()
+            latestSelectedSymptoms = selectedSymptoms.toList()
 
-            // 5. Deep session state
             deepManager.setQuestionnaireCompleted()
+
+            // -----------------------------------------------------
+            // Send questionnaire summary
+            // -----------------------------------------------------
+            val answerSummary = buildAssessmentAnswerSummary(
+                questionnaire = questionnaire,
+                scores = latestAssessmentScores
+            )
+
+            addMessage(answerSummary, isUser = false)
+
+            // -----------------------------------------------------
+            // NEW LOGIC: Switch to extended PHQ‑9 sub‑state
+            // -----------------------------------------------------
+            if (questionnaire == QuestionnaireType.PHQ9) {
+
+                val phq9Score = symptomEngine.computePhq9Score()
+
+                if (phq9Score >= 5) {
+                    // Switch into extended assessment mode
+                    deepManager.assessmentMode = AssessmentMode.EXTENDED_PHQ9
+                    deepManager.extendedQuestionIndex = 0
+
+                    // Hide questionnaire UI
+                    questionnaireContainer.visibility = View.GONE
+                    inputBar.visibility = View.VISIBLE
+                    recyclerView.visibility = View.VISIBLE
+                    enableChatInput()
+
+                    // Start conversational ACCHA questions
+                    sendNextExtendedAssessmentQuestion()
+                    return@setOnClickListener
+                }
+            }
+
+            // -----------------------------------------------------
+            // If not extended PHQ‑9 → continue normally
+            // -----------------------------------------------------
             deepManager.advancePhaseIfNeeded()
 
-            // 6. Hide questionnaire UI
             questionnaireContainer.visibility = View.GONE
             inputBar.visibility = View.VISIBLE
             recyclerView.visibility = View.VISIBLE
 
             enableChatInput()
-
-            // 7. Send diagnosis
-            sendDiagnosisMessage(selectedSymptoms)
         }
-
-
 
 
 
@@ -761,6 +783,10 @@ class ChatActivity : AppCompatActivity() {
     // ---------------------------------------------------------
     private fun processUserMessage(userMessage: String) {
 
+        // Top of processUserMessage coroutine
+        Log.d("ProcessUserMessage", "ENTER handler | userMessage='${userMessage.take(200)}' | deepManagerPhase=${deepManager.phase}")
+
+
         Log.d("LifecycleCheck", "🟦 processUserMessage() called")
         Log.d("LifecycleCheck", "Activity instance hash = ${this.hashCode()}")
         Log.d(
@@ -880,6 +906,7 @@ class ChatActivity : AppCompatActivity() {
 
 
 
+
                 if (deepManager.phase == DeepPhase.SESSION_COMPLETE) {
 
                     Log.d("DeepSession", "SESSION_COMPLETE triggered early exit")
@@ -908,10 +935,26 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                 try {
 
                     // -----------------------------------------------------
-                    // 0. CONVERSATION STATE LAYER
+                    // EXTENDED PHQ‑9 conversational mode (intercepts messages)
+                    // -----------------------------------------------------
+                    if (deepManager.assessmentMode == AssessmentMode.EXTENDED_PHQ9) {
+
+                        handleExtendedAssessmentResponse(userMessage)
+
+                        // ❗ Only return if we are STILL in extended mode
+                        if (deepManager.assessmentMode == AssessmentMode.EXTENDED_PHQ9) {
+                            return@launch
+                        }
+
+                        // ❗ If assessmentMode changed to STANDARD,
+                        // it means extended assessment has finished.
+                        // Allow router to continue so DIAGNOSIS runs immediately.
+                    }
+
+                    // -----------------------------------------------------
+                    // NORMAL DEEP SESSION FLOW BEGINS HERE
                     // -----------------------------------------------------
 
-// ✅ CLASSIFY ONCE (IMPORTANT FIX)
                     val intent = classifyIntent(userMessage)
 
                     Log.d("ExerciseFlow", "Intent = $intent")
@@ -920,11 +963,9 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
 
                     // -----------------------------------------------------
                     // SESSION TERMINATION (UNIFIED)
-                    // -----------------------------------------------------
+                    // -----------------------------------------------------`
                     if (intent == "END_SESSION") {
                         deepManager.setSessionComplete()
-
-                        // IMPORTANT: allow SESSION_COMPLETE phase to run
                         processUserMessage("")
                         return@launch
                     }
@@ -932,195 +973,672 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                     // -----------------------------------------------------
                     // EXERCISE SELECTION → MOVE TO EXERCISE_GUIDANCE
                     // -----------------------------------------------------
-                    // -----------------------------------------------------
-// EXERCISE SELECTION → MOVE TO EXERCISE_GUIDANCE
-// -----------------------------------------------------
                     if (deepManager.exercisesDelivered() &&
                         deepManager.phase == DeepPhase.THERAPY_EXERCISES &&
                         (intent == "SELECT_EXERCISE" ||
                                 intent == "YES_TO_EXERCISES" ||
                                 intent == "ACKNOWLEDGEMENT")) {
 
-                        Log.d("EXERCISE_TRANSITION", "intent=$intent")
-                        Log.d("EXERCISE_TRANSITION", "userMessage=\"$userMessage\"")
-                        Log.d("EXERCISE_TRANSITION", "phase=${deepManager.phase}, delivered=${deepManager.exercisesDelivered()}")
-
-
-                        // 1️⃣ Detect chosen exercise NAME
-                        val chosenName = deepManager.detectChosenExercise(userMessage)
-                        Log.d("EXERCISE_TRANSITION", "chosenName=$chosenName, userMessage=\"$userMessage\"")
-
-                        // 2️⃣ Convert name → full DbtExercise
-                        val chosenExercise = deepManager.generatedDbtExercises
-                            ?.find { it.name.equals(chosenName, ignoreCase = true) }
-
-                        Log.d("EXERCISE_TRANSITION", "matchedExercise=${chosenExercise?.name}")
-
-                        // 3️⃣ Fallback if detection fails
-                        val finalExercise = chosenExercise
-                            ?: deepManager.generatedDbtExercises?.firstOrNull()
-                            ?: return@launch
-
-                        Log.d("EXERCISE_TRANSITION", "finalExercise=${finalExercise.name}")
-
-                        // 4️⃣ Initialize exercise
-                        deepManager.beginExercise(finalExercise)
-                        deepManager.awaitingExerciseConsent = false
-                        Log.d("EXERCISE_TRANSITION", "beginExercise() → phase=${deepManager.phase}")
-
-                        // 5️⃣ Generate FIRST STEP
-                        val firstStep = withContext(Dispatchers.IO) {
-                            try {
-                                deepManager.generateExerciseStep(
-                                    exerciseName = finalExercise.name,
-                                    userInput = "",
-                                    disorder = lastDiagnosis ?: "general_distress",
-                                    symptoms = symptomEngine.getSymptoms(),
-                                    steps = finalExercise.steps,
-                                    stepIndex = deepManager.currentExerciseStep,
-                                    client = client
-                                )
-                            } catch (e: Exception) {
-                                "Let's begin. Write one short sentence related to \"${finalExercise.name}\"."
-                            }
-                        }
-
-                        // 6️⃣ Send first step
-                        addMessage(firstStep, false)
-                        return@launch
+                        // ... your existing exercise transition logic
                     }
 
 
                     // -----------------------------------------------------
-                    // 1. PHASE SYSTEM
-                    // -----------------------------------------------------
-                    Log.d("DeepSession", "Current phase: ${deepManager.phase}")
+// 1. PHASE SYSTEM (diagnostic + defensive)
+// -----------------------------------------------------
+                    Log.d("DeepSession", "Current phase: ${deepManager.phase} | session=${deepManager::class.simpleName}")
 
                     when (deepManager.phase) {
 
                         DeepPhase.CONTEXT_INTAKE -> {
 
-                            // Step 1 — detect emotion if missing
+                            Log.d(
+                                "DeepSession",
+                                "Entering CONTEXT_INTAKE | " +
+                                        "contextEmotion=${deepManager.contextEmotion} | " +
+                                        "contextCause=${deepManager.contextCause}"
+                            )
+
+                            // -----------------------------------------------------
+                            // STEP 1 — Detect emotion
+                            // -----------------------------------------------------
                             if (deepManager.contextEmotion == null) {
 
-                                val emotion = symptomEngine.detectEmotion(userMessage, client)
-                                deepManager.contextEmotion = emotion
+                                Log.d(
+                                    "DeepSession",
+                                    "No contextEmotion found. Running symptomEngine.detectEmotion " +
+                                            "on userMessage='$userMessage'"
+                                )
 
+                                Log.i(
+                                    "DeepSession",
+                                    "Calling symptomEngine.detectEmotion | " +
+                                            "text='${userMessage.take(200)}' | " +
+                                            "deepManagerHash=${deepManager.hashCode()}"
+                                )
+
+                                val emotionResultRaw: Any? = try {
+                                    symptomEngine.detectEmotion(userMessage, client)
+                                } catch (e: Exception) {
+                                    Log.e(
+                                        "DeepSession",
+                                        "detectEmotion threw exception",
+                                        e
+                                    )
+                                    null
+                                }
+
+                                if (emotionResultRaw == null) {
+
+                                    Log.w(
+                                        "DeepSession",
+                                        "detectEmotion returned null. Sending gentle re-probe."
+                                    )
+
+                                    addMessage(
+                                        "I hear you. Could you share a little more about how you're feeling right now?",
+                                        isUser = false
+                                    )
+
+                                    return@launch
+                                }
+
+                                val detectedEmotion = when (emotionResultRaw) {
+
+                                    is String -> emotionResultRaw
+
+                                    is Map<*, *> -> {
+                                        (emotionResultRaw["label"] as? String)
+                                            ?: (emotionResultRaw["emotion"] as? String)
+                                            ?: emotionResultRaw.toString()
+                                    }
+
+                                    else -> emotionResultRaw.toString()
+                                }
+
+                                Log.d(
+                                    "DeepSession",
+                                    "Detected emotion='$detectedEmotion'"
+                                )
+
+                                deepManager.contextEmotion = detectedEmotion
+
+                                // -----------------------------------------------------
+                                // Crisis detection
+                                // -----------------------------------------------------
+                                val crisisKeywords = listOf(
+                                    "suicide",
+                                    "kill myself",
+                                    "end it",
+                                    "can't go on",
+                                    "hopeless",
+                                    "pointless",
+                                    "empty",
+                                    "worthless",
+                                    "die",
+                                    "self harm"
+                                )
+
+                                val crisisDetected = crisisKeywords.any { keyword ->
+                                    userMessage.lowercase().contains(keyword)
+                                }
+
+                                if (crisisDetected) {
+
+                                    Log.w(
+                                        "DeepSession",
+                                        "Crisis detected in intake phase"
+                                    )
+
+                                    val strongRepeat =
+                                        deepManager.isStrongCrisisMessage(userMessage)
+
+                                    if (
+                                        strongRepeat ||
+                                        deepManager.shouldTriggerCrisisPopup()
+                                    ) {
+                                        showEmergencyDialog()
+                                    } else {
+                                        Log.w(
+                                            "DeepSession",
+                                            "Crisis popup suppressed due to cooldown"
+                                        )
+                                    }
+
+                                    // Do NOT stop the session.
+                                    // Continue the intake flow normally.
+                                }
+
+                                // -----------------------------------------------------
+                                // Empathetic reflection
+                                // -----------------------------------------------------
                                 addMessage(
-                                    "Thanks for sharing that. What do you think is causing you to feel $emotion?",
+                                    "Thank you for sharing that. I’d like to understand what’s been contributing to how you’re feeling.",
                                     isUser = false
                                 )
+
+
+                                Log.i(
+                                    "DeepSession",
+                                    "ProbeSent: ask_for_cause | emotion=$detectedEmotion"
+                                )
+
                                 return@launch
                             }
 
-                            // Step 2 — detect cause if missing
+                            // -----------------------------------------------------
+                            // STEP 2 — Detect cause
+                            // -----------------------------------------------------
                             if (deepManager.contextCause == null) {
 
-                                deepManager.contextCause = userMessage
-                                deepManager.contextSummary =
-                                    "User feels ${deepManager.contextEmotion} because: $userMessage"
-
-                                // Select PHQ‑9 or GAD‑7
-                                val questionnaire = QuestionnaireSelector.select(
-                                    deepManager.contextEmotion,
-                                    deepManager.contextCause
+                                Log.d(
+                                    "DeepSession",
+                                    "No contextCause found. Treating current userMessage " +
+                                            "as cause: '$userMessage'"
                                 )
-                                deepManager.selectedQuestionnaire = questionnaire
 
+                                val trimmed = userMessage.trim()
+
+                                val ambiguousReplies = setOf(
+                                    "ok",
+                                    "yes",
+                                    "no",
+                                    "fine"
+                                )
+
+                                if (
+                                    trimmed.length < 3 ||
+                                    trimmed.lowercase() in ambiguousReplies
+                                ) {
+
+                                    Log.w(
+                                        "DeepSession",
+                                        "User reply too short/ambiguous to be a cause. Re-probing."
+                                    )
+
+                                    addMessage(
+                                        "I hear you. Could you tell me a bit more about what’s been " +
+                                                "making you feel ${deepManager.contextEmotion}?",
+                                        isUser = false
+                                    )
+
+                                    return@launch
+                                }
+
+                                // -----------------------------------------------------
+                                // Store cause and summary
+                                // -----------------------------------------------------
+                                deepManager.contextCause = userMessage.trim()
+                                deepManager.contextSummary =
+                                    "User is feeling ${deepManager.contextEmotion} due to recent stressors."
+
+
+                                Log.d(
+                                    "DeepSession",
+                                    "Set contextCause and contextSummary | " +
+                                            "cause='${deepManager.contextCause}'"
+                                )
+
+                                // -----------------------------------------------------
+                                // Crisis detection based on cause
+                                // -----------------------------------------------------
+                                val crisisKeywords = listOf(
+                                    "suicide",
+                                    "kill myself",
+                                    "end it",
+                                    "can't go on",
+                                    "hopeless",
+                                    "pointless",
+                                    "empty",
+                                    "worthless",
+                                    "die",
+                                    "self harm"
+                                )
+
+                                val crisisDetected = crisisKeywords.any { keyword ->
+                                    userMessage.lowercase().contains(keyword)
+                                }
+
+                                if (crisisDetected) {
+
+                                    Log.w(
+                                        "DeepSession",
+                                        "Crisis detected in intake phase"
+                                    )
+
+                                    val strongRepeat =
+                                        deepManager.isStrongCrisisMessage(userMessage)
+
+                                    if (
+                                        strongRepeat ||
+                                        deepManager.shouldTriggerCrisisPopup()
+                                    ) {
+                                        showEmergencyDialog()
+                                    } else {
+                                        Log.w(
+                                            "DeepSession",
+                                            "Crisis popup suppressed due to cooldown"
+                                        )
+                                    }
+
+                                    // Do NOT stop the session.
+                                    // Continue the intake flow normally.
+                                }
+
+                                // -----------------------------------------------------
+                                // Cause classification
+                                // -----------------------------------------------------
+                                val causeLower = userMessage.lowercase()
+
+                                val causeCategory = when {
+
+                                    listOf(
+                                        "empty",
+                                        "pointless",
+                                        "meaningless",
+                                        "nothing matters"
+                                    ).any { causeLower.contains(it) } ->
+                                        "existential distress"
+
+                                    listOf(
+                                        "hopeless",
+                                        "no future",
+                                        "can't go on"
+                                    ).any { causeLower.contains(it) } ->
+                                        "hopelessness"
+
+                                    listOf(
+                                        "tired",
+                                        "exhausted",
+                                        "burnt out",
+                                        "burnout"
+                                    ).any { causeLower.contains(it) } ->
+                                        "burnout"
+
+                                    listOf(
+                                        "alone",
+                                        "lonely",
+                                        "no one",
+                                        "isolated"
+                                    ).any { causeLower.contains(it) } ->
+                                        "loneliness"
+
+                                    listOf(
+                                        "relationship",
+                                        "breakup",
+                                        "partner",
+                                        "family"
+                                    ).any { causeLower.contains(it) } ->
+                                        "relationship stress"
+
+                                    listOf(
+                                        "school",
+                                        "uni",
+                                        "grades",
+                                        "exam",
+                                        "workload"
+                                    ).any { causeLower.contains(it) } ->
+                                        "academic pressure"
+
+                                    listOf(
+                                        "trauma",
+                                        "past",
+                                        "abuse",
+                                        "violence"
+                                    ).any { causeLower.contains(it) } ->
+                                        "trauma-related distress"
+
+                                    listOf(
+                                        "worthless",
+                                        "failure",
+                                        "hate myself"
+                                    ).any { causeLower.contains(it) } ->
+                                        "self-worth issues"
+
+                                    else ->
+                                        "general emotional distress"
+                                }
+
+                                deepManager.contextCauseCategory = causeCategory
+
+                                Log.d(
+                                    "DeepSession",
+                                    "Cause category classified as '$causeCategory'"
+                                )
+
+                                // -----------------------------------------------------
+                                // Empathetic reflection
+                                // -----------------------------------------------------
                                 addMessage(
-                                    "Thanks for explaining that. I’ll use the ${questionnaire.name} questionnaire next.",
+                                    "Thank you for explaining that. It sounds like you're dealing with $causeCategory, and I want to support you through this.",
                                     isUser = false
+                                )
+
+
+                                // -----------------------------------------------------
+                                // Questionnaire selection
+                                // -----------------------------------------------------
+                                deepManager.selectAndSetQuestionnaireIfNeeded()
+
+                                Log.d(
+                                    "DeepSession",
+                                    "After selectAndSetQuestionnaireIfNeeded | " +
+                                            "selectedQuestionnaire=" +
+                                            "${deepManager.selectedQuestionnaire?.name ?: "null"}"
+                                )
+
+                                val questionnaire = deepManager.selectedQuestionnaire
+
+                                if (questionnaire == null) {
+
+                                    Log.w(
+                                        "DeepSession",
+                                        "No questionnaire selected. Sending fallback message " +
+                                                "and keeping intake phase active."
+                                    )
+
+                                    addMessage(
+                                        "I'm preparing the right questionnaire for you. One moment…",
+                                        isUser = false
+                                    )
+
+                                    return@launch
+                                }
+
+                                val questionnaireName = questionnaire.name
+
+                                // -----------------------------------------------------
+                                // Single combined questionnaire intro (no duplicates)
+                                // -----------------------------------------------------
+                                addMessage(
+                                    "Based on what you've shared, we'll continue with the $questionnaireName. You can begin whenever you're ready.",
+                                    isUser = false
+                                )
+
+
+                                // -----------------------------------------------------
+                                // Transition to ASSESSMENT
+                                // -----------------------------------------------------
+                                Log.i(
+                                    "DeepSession",
+                                    "Advancing phase after cause collected"
                                 )
 
                                 deepManager.advancePhaseIfNeeded()
+
                                 return@launch
                             }
-
-                            // If both emotion + cause already collected, just advance
-                            deepManager.advancePhaseIfNeeded()
-                            return@launch
                         }
 
                         DeepPhase.ASSESSMENT -> {
 
+                            Log.d(
+                                "DeepSession",
+                                "Entering ASSESSMENT | " +
+                                        "selectedQuestionnaire=${deepManager.selectedQuestionnaire?.name ?: "null"}"
+                            )
+
+                            // -----------------------------------------------------
+                            // Safety check
+                            // -----------------------------------------------------
                             val questionnaire = deepManager.selectedQuestionnaire
 
-                            // Safety fallback (should not happen)
                             if (questionnaire == null) {
+
+                                Log.w(
+                                    "DeepSession",
+                                    "ASSESSMENT entered but selectedQuestionnaire is null."
+                                )
+
                                 addMessage(
                                     "I'm preparing the right questionnaire for you. One moment…",
-                                    false
+                                    isUser = false
                                 )
+
                                 return@launch
                             }
 
+                            // -----------------------------------------------------
+                            // Present the selected questionnaire
+                            // -----------------------------------------------------
                             when (questionnaire) {
 
                                 QuestionnaireType.PHQ9 -> {
-                                    // Build PHQ‑9 UI
-                                    showQuestionnaire(QuestionnaireData.phq9)
 
-                                    addMessage(
-                                        "Please complete the PHQ‑9 questionnaire above. It helps us understand how your mood has been recently.",
-                                        false
+                                    Log.d(
+                                        "DeepSession",
+                                        "ASSESSMENT: Presenting PHQ-9"
+                                    )
+
+                                    showQuestionnaire(
+                                        QuestionnaireData.phq9
                                     )
                                 }
 
                                 QuestionnaireType.GAD7 -> {
-                                    // Build GAD‑7 UI
-                                    showQuestionnaire(QuestionnaireData.gad7)
 
-                                    addMessage(
-                                        "Please complete the GAD‑7 questionnaire above. It helps us understand how anxiety may be affecting you.",
-                                        false
+                                    Log.d(
+                                        "DeepSession",
+                                        "ASSESSMENT: Presenting GAD-7"
+                                    )
+
+                                    showQuestionnaire(
+                                        QuestionnaireData.gad7
                                     )
                                 }
                             }
 
+                            Log.d(
+                                "DeepSession",
+                                "ASSESSMENT questionnaire displayed successfully: ${questionnaire.name}"
+                            )
+
+                            // -----------------------------------------------------
+                            // Do NOT advance the phase here.
+                            //
+                            // The questionnaire submit button handles the user's
+                            // responses and the transition to the next phase.
+                            // -----------------------------------------------------
+
                             return@launch
                         }
 
-
                         DeepPhase.DIAGNOSIS -> {
 
-                            deepManager.setDiagnosisDelivered()
+                            Log.d(
+                                "DeepSession",
+                                "Entering DIAGNOSIS | " +
+                                        "questionnaire=${deepManager.selectedQuestionnaire?.name ?: "null"} | " +
+                                        "scores=$latestAssessmentScores"
+                            )
+
+                            // -----------------------------------------------------
+                            // Safety check — questionnaire must exist
+                            // -----------------------------------------------------
+                            val questionnaire = deepManager.selectedQuestionnaire
+
+                            if (questionnaire == null) {
+                                Log.w("DeepSession", "DIAGNOSIS entered but selectedQuestionnaire is null.")
+
+                                addMessage(
+                                    "I couldn't determine which questionnaire was completed. Please try again.",
+                                    isUser = false
+                                )
+                                return@launch
+                            }
+
+                            // -----------------------------------------------------
+                            // Safety check — scores must exist
+                            // -----------------------------------------------------
+                            if (latestAssessmentScores.isEmpty()) {
+                                Log.w("DeepSession", "DIAGNOSIS entered but no assessment scores were stored.")
+
+                                addMessage(
+                                    "I couldn't find your questionnaire responses. Please complete the questionnaire again.",
+                                    isUser = false
+                                )
+                                return@launch
+                            }
+
+                            // -----------------------------------------------------
+                            // IMPORTANT:
+                            // The questionnaire summary is now sent in the submit handler.
+                            // DO NOT send it here anymore.
+                            // -----------------------------------------------------
+
+                            // -----------------------------------------------------
+                            // Generate diagnosis interpretation
+                            // -----------------------------------------------------
+                            Log.d("DiagnosisDebug", "Sending questionnaire results for diagnosis")
+
+                            sendDiagnosisMessage(latestSelectedSymptoms)
+
+                            // sendDiagnosisMessage():
+                            // - sends PHQ/GAD screening results
+                            // - sends interpretation
+                            // - marks diagnosis delivered
+                            // - DOES NOT advance phase anymore
+
                             deepManager.advancePhaseIfNeeded()
 
-                            sendDiagnosisMessage(symptomEngine.getConfirmedSymptoms())
                             return@launch
                         }
 
                         DeepPhase.TREATMENT_PATTERN -> {
 
+                            Log.d(
+                                "DeepSession",
+                                "Entering TREATMENT_PATTERN | " +
+                                        "lastDiagnosis=$lastDiagnosis"
+                            )
+
+                            // -----------------------------------------------------
+                            // Lock user input while treatment pattern is generated
+                            // -----------------------------------------------------
+
                             isUserInputLocked = true
 
-                            val disorder = lastDiagnosis ?: "general_distress"
+                            try {
 
-                            withContext(Dispatchers.IO) {
+                                // -----------------------------------------------------
+                                // 1. Get current disorder
+                                // -----------------------------------------------------
 
-                                val pattern = deepManager.getTreatmentPattern(
-                                    disorder,
-                                    symptomEngine.getSymptoms(),
-                                    5f, 5f, 5f, 5f, 5f, 80f,
-                                    "neutral"
+                                val disorder = lastDiagnosis ?: "general_distress"
+
+                                // -----------------------------------------------------
+                                // 2. Get confirmed symptoms from symptom engine
+                                // -----------------------------------------------------
+
+                                val symptoms = symptomEngine.getSymptoms()
+
+                                Log.d(
+                                    "DeepSession",
+                                    "Generating treatment pattern | " +
+                                            "disorder=$disorder | " +
+                                            "symptomCount=${symptomEngine.getSymptomCount()}"
                                 )
 
+                                // -----------------------------------------------------
+                                // 3. Generate treatment pattern
+                                // -----------------------------------------------------
+                                //
+                                // These values are currently your existing defaults.
+                                // Keep them here unless you have actual values available
+                                // elsewhere in your session.
+                                //
+
+                                val pattern = withContext(Dispatchers.IO) {
+
+                                    deepManager.getTreatmentPattern(
+                                        disorder = disorder,
+                                        symptoms = symptoms,
+                                        mood = 5f,
+                                        sleep = 5f,
+                                        activity = 5f,
+                                        stress = 5f,
+                                        progress = 5f,
+                                        adherence = 80f,
+                                        emotion = symptomEngine.emotionLabel
+                                    )
+                                }
+
+                                Log.d(
+                                    "DeepSession",
+                                    "Treatment pattern generated | " +
+                                            "cluster=${pattern.cluster} | " +
+                                            "focus=${pattern.focus} | " +
+                                            "methods=${pattern.methods.joinToString()}"
+                                )
+
+                                // -----------------------------------------------------
+                                // 4. Store treatment pattern
+                                // -----------------------------------------------------
+
                                 deepManager.setLastTreatmentPattern(pattern)
+
+                                // -----------------------------------------------------
+                                // 5. Mark treatment pattern as delivered
+                                // -----------------------------------------------------
+
                                 deepManager.setPatternDelivered()
-                            }
 
-                            withContext(Dispatchers.Main) {
+                                Log.d(
+                                    "DeepSession",
+                                    "Treatment pattern stored and marked as delivered"
+                                )
 
-                                isUserInputLocked = false
+                                // -----------------------------------------------------
+                                // 6. Advance to next phase
+                                // -----------------------------------------------------
 
                                 deepManager.advancePhaseIfNeeded()
 
-                                // Trigger therapy type generation immediately
+                                // Trigger next phase immediately (critical)
                                 processUserMessage("")
+
+                                Log.d(
+                                    "DeepSession",
+                                    "Phase after treatment pattern: ${deepManager.phase}"
+                                )
+
+                            } catch (e: Exception) {
+
+                                Log.e(
+                                    "DeepSession",
+                                    "Error generating treatment pattern",
+                                    e
+                                )
+
+                                // -----------------------------------------------------
+                                // Safety fallback
+                                // -----------------------------------------------------
+
+                                addMessage(
+                                    "I’m having a little trouble preparing the next part of your support plan. " +
+                                            "Please give me a moment and try again.",
+                                    isUser = false
+                                )
+
+                            } finally {
+
+                                // -----------------------------------------------------
+                                // Always unlock input
+                                // -----------------------------------------------------
+
+                                isUserInputLocked = false
                             }
+
+                            // -----------------------------------------------------
+                            // Do not continue processing the current user message
+                            // through another phase.
+                            // -----------------------------------------------------
 
                             return@launch
                         }
+
+
+
 
                         DeepPhase.THERAPY_TYPE -> {
 
@@ -1558,7 +2076,11 @@ REQUIREMENTS
 
     private fun sendDiagnosisMessage(selectedSymptoms: List<String>) {
 
-        val symptomText = selectedSymptoms.joinToString(", ")
+        val symptomText = if (selectedSymptoms.isEmpty()) {
+            "None reported"
+        } else {
+            selectedSymptoms.joinToString(", ")
+        }
 
         Log.e(
             "DiagnosisDebug",
@@ -1568,10 +2090,14 @@ REQUIREMENTS
                     " | engineCount=${symptomEngine.getConfirmedSymptoms().size}"
         )
 
-        // 1. Get PHQ‑9 / GAD‑7 evidence (new system)
+        // -----------------------------------------------------
+        // 1. Get PHQ‑9 / GAD‑7 + ACCHA evidence
+        // -----------------------------------------------------
         val evidence = symptomEngine.getDiagnosisEvidence()
 
-        // 2. Build clinical summary
+        // -----------------------------------------------------
+        // 2. Build PHQ‑9 / GAD‑7 summary
+        // -----------------------------------------------------
         val summary = """
 PHQ‑9 (depression):
 - Score: ${evidence.phq9Score.toInt()}
@@ -1582,37 +2108,112 @@ GAD‑7 (anxiety):
 - Severity: ${evidence.gad7Severity}
 """.trimIndent()
 
-        // 3. Show summary message in chat
-        val summaryText = """
-Based on your questionnaire responses:
+        // -----------------------------------------------------
+        // 3. Build ACCHA extended assessment summary
+        // -----------------------------------------------------
+        val acchaSummary = """
+ACCHA Extended Assessment (12‑month history):
 
-$summary
+Emotional Frequency:
+- Hopelessness: ${evidence.acchaHopeless}
+- Overwhelm: ${evidence.acchaOverwhelmed}
+- Exhaustion: ${evidence.acchaExhausted}
+- Sadness: ${evidence.acchaSad}
+- Functional impairment: ${evidence.acchaFunctionalImpairment}
 
-These scores are screening indicators, not a formal diagnosis, but they help us understand how you're feeling.
+Risk Indicators:
+- Suicidal ideation: ${evidence.acchaSuicidalThoughts}
+- Suicide attempts: ${evidence.acchaSuicideAttempts}
+
+Depression History:
+- Ever diagnosed with depression: ${evidence.acchaDiagnosed}
+- Diagnosed in last 12 months: ${evidence.acchaDiagnosed12Months}
+
+Current Support:
+- Currently in therapy: ${evidence.acchaTherapy}
+- Currently on medication: ${evidence.acchaMedication}
 """.trimIndent()
 
-        addMessage(summaryText, false)
+        // -----------------------------------------------------
+        // 4. Hidden context (emotion + cause + category)
+        // -----------------------------------------------------
+        val hiddenContext = """
+INTERNAL CONTEXT (not shown to user):
 
-        // 4. Build DIAGNOSIS prompt (clinically grounded)
+Emotion detected:
+- ${deepManager.contextEmotion ?: "Not identified"}
+
+Cause described:
+- ${deepManager.contextCause ?: "Not identified"}
+
+Cause category:
+- ${deepManager.contextCauseCategory ?: "Not classified"}
+
+Interpretation notes:
+- Emotion and cause may influence PHQ‑9/GAD‑7 scores.
+- Academic pressure, relationship stress, loneliness, trauma, or existential distress may amplify symptoms.
+- Consider whether the cause explains concentration issues, sleep disruption, appetite changes, or fatigue.
+""".trimIndent()
+
+        // -----------------------------------------------------
+        // 5. Hidden health profile (medical + demographics)
+        // -----------------------------------------------------
+        val hiddenHealthProfile = """
+HEALTH PROFILE (internal only):
+
+Medical conditions:
+${if (deepManager.medicalConditions.isEmpty()) "- None reported" else deepManager.medicalConditions.joinToString("\n- ", prefix = "- ")}
+
+Demographics:
+- Full‑time student: ${deepManager.fullTimeStatus}
+- International student: ${deepManager.internationalStatus}
+- Ethnicity: ${if (deepManager.ethnicityList.isEmpty()) "Not specified" else deepManager.ethnicityList.joinToString(", ")}
+
+Interpretation notes:
+- Student status may influence stress, sleep, concentration, and anxiety.
+- International status may relate to isolation, cultural adjustment, or migration stress.
+- Cultural background may influence how distress is expressed (e.g., somatic symptoms).
+- Medical conditions may mimic or amplify fatigue, sleep issues, or concentration problems.
+""".trimIndent()
+
+        // -----------------------------------------------------
+        // 6. Build final diagnosis interpretation prompt
+        // -----------------------------------------------------
         val prompt = """
 You are interpreting standardized mental‑health screening scores.
 
+$hiddenContext
+
+$hiddenHealthProfile
+
 SCREENING RESULTS:
 $summary
+
+ACCHA EXTENDED ASSESSMENT:
+$acchaSummary
 
 SYMPTOMS SELECTED:
 $symptomText
 
 TASK:
-- Provide a **very concise** interpretation.
-- Use **bullet points**.
+- Provide a very concise interpretation.
+- Use bullet points only.
 - Mention depression and anxiety separately.
-- If both scores are elevated, mention **mixed anxiety‑depression**.
-- Use **short, simple sentences** (max 1–2 lines each).
-- Keep the tone supportive and non‑clinical.
-- Remind the user this is **not a formal diagnosis**.
+- Silently consider the internal context and health profile.
+- If ACCHA values show frequent hopelessness, exhaustion, sadness, or overwhelm, describe this as “ongoing” or “long‑lasting” feelings.
+- If functional impairment is elevated, gently note that these feelings may have affected day‑to‑day life.
+- If suicidal thoughts or past attempts appear, acknowledge them with care and encourage reaching out to someone trusted or a professional.
+- If the user has a past diagnosis, mention that these scores may reflect continuing or returning symptoms.
+- If the user is in therapy or on medication, contextualize the scores in a supportive way.
+- Keep sentences short and simple.
+- Keep the tone warm, supportive, and non‑clinical.
+- Do not give advice, treatment plans, or instructions.
+- Remind the user this is not a formal diagnosis.
 """.trimIndent()
 
+        // -----------------------------------------------------
+        // 7. Send interpretation to AI
+        // -----------------------------------------------------
         sendToAI(
             userMessage = prompt,
             emotion = "not_applicable",
@@ -1624,9 +2225,14 @@ TASK:
             methods = null
         )
 
+        // -----------------------------------------------------
+        // 8. Mark diagnosis delivered
+        // -----------------------------------------------------
         deepManager.setDiagnosisDelivered()
-        deepManager.advancePhaseIfNeeded()
     }
+
+
+
 
 
 
@@ -1801,7 +2407,19 @@ $historyText
 "$userMessage"
 
 ────────────────────────────────────────
-[TREATMENT PATTERN (Model C)]
+[CONTEXT INTAKE BEHAVIOR]
+────────────────────────────────────────
+When Phase is CONTEXT_INTAKE follow these rules exactly:
+- **Primary goal**: collect **emotion** and **cause** for the current session before any assessment.
+- **Emotion detection**: if the session has no emotion, ask one short, empathetic probe for emotion (example: "I’m sorry you’re feeling this way — how would you describe your emotion right now?").
+- **Cause probe**: if emotion is present but cause is missing, ask **one** gentle question focused on cause (example: "What do you think is causing that feeling right now?"). Offer a short option list if user is brief: "Is it work, relationships, health, or something else?"
+- **Accept brief answers**: treat a normal short answer (≥3 characters and not a token like 'ok'/'yes') as the cause. If the reply is ambiguous (ok/yes/no/fine), re‑probe once with a short follow-up.
+- **Do not advance phases**: never imply or attempt to progress the session; wait for the external system to change the phase.
+- **Safety override**: if the user expresses suicidal ideation, self‑harm, intent to harm others, or extreme hopelessness, follow the SAFETY CHECK and stop intake.
+- **Tone and length**: be warm, concise, and non‑judgmental. Ask only one question per response in intake.
+
+────────────────────────────────────────
+[TREATMENT PATTERN Model C]
 ────────────────────────────────────────
 Cluster: $cluster
 Focus: $focus
@@ -1840,55 +2458,17 @@ You are NOT limited to the disorders in the dataset or Model B.
 You may identify ANY mental‑health condition that matches the user’s symptom pattern,
 even if it is not included in the training data.
 
-Examples include (but are NOT limited to):
-- Burnout / work‑related exhaustion
-- Social anxiety
-- OCD‑like intrusive rumination
-- Bipolar‑like activation patterns
-- Emotional eating
-- Digital addiction
-- Compulsive buying
-- Trauma‑related stress
-- Adjustment disorder
-- Sleep disturbance patterns
-
-You must name the condition directly if the symptoms match.
+Use the weighting rules and cluster definitions provided.
 
 ────────────────────────────────────────
-WEIGHTING RULES
+PHASE BEHAVIOR
 ────────────────────────────────────────
-For every condition you identify, assign a weight:
-- HIGH = strong match to 3 or more core symptoms
-- MEDIUM = partial match to 2 symptoms
-- LOW = weak match to 1 symptom
-
-Weights are relative indicators, not probabilities.
-
-────────────────────────────────────────
-SYMPTOM CLUSTER DEFINITIONS
-────────────────────────────────────────
-Use these clusters to reason about patterns:
-
-- Exhaustion cluster:
-  feeling.tired, trouble.in.concentration, having.trouble.with.work, having.trouble.in.sleeping
-
-- Hyperarousal cluster:
-  feeling.nervous, panic, breathing.rapidly, sweating
-
-- Intrusion cluster:
-  popping.up.stressful.memory, having.nightmares
-
-- Avoidance cluster:
-  avoids.people.or.activities, introvert, close.friend
-
-- Impulse coping cluster:
-  material.possessions, social.media.addiction, change.in.eating, weight.gain
-
-You may combine clusters to infer broader patterns.
-
-────────────────────────────────────────
-PHASE BEHAVIOUR (UPDATED FOR NEW ARCHITECTURE)
-────────────────────────────────────────
+▶ CONTEXT_INTAKE
+- Collect emotion and cause only.
+- Ask one short, empathetic question to elicit missing info.
+- Re‑probe once for ambiguous replies.
+- Do not ask assessment questions or suggest questionnaires.
+- Respect opt‑out and safety rules.
 
 ▶ ASSESSMENT
 - User already completed questionnaire
@@ -2159,140 +2739,138 @@ You only adapt tone and content to the current phase.
     }
 
     private fun showQuestionnaire(questionList: List<String>) {
-
-        questionnaireContainer.visibility = View.VISIBLE
-        inputBar.visibility = View.GONE
-        recyclerView.visibility = View.GONE
-
-        // Remove all dynamic rows (keep title at index 0 and submit button at the end)
-        for (i in questionnaireLayout.childCount - 1 downTo 1) {
-            val view = questionnaireLayout.getChildAt(i)
-            if (view.tag is String || view.tag is Pair<*, *>) {
-                questionnaireLayout.removeViewAt(i)
-            }
-        }
-
-        // Build PHQ‑9 / GAD‑7 rows
-        questionList.forEachIndexed { index, questionText ->
-
-            val rowTag = "q$index"
-
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(0, 12, 0, 12)
-                // store question id and radioGroup id together in the tag so submit handler can find the RadioGroup directly
-                // tag will be set after radioGroup is created below
-            }
-
-            val questionLabel = TextView(this).apply {
-                text = questionText
-                textSize = 16f
-                setTextColor(Color.WHITE)
-            }
-
-            // PHQ‑9 / GAD‑7 scoring options (0–3)
-            val options = listOf(
-                "Not at all" to 0,
-                "Several days" to 1,
-                "More than half the days" to 2,
-                "Nearly every day" to 3
+        try {
+            Log.d(
+                "DeepSession",
+                "showQuestionnaire() called | questionCount=${questionList.size} thread=${Thread.currentThread().name} deepManagerHash=${deepManager.hashCode()} selectedQ=${deepManager.selectedQuestionnaire?.name ?: "null"} activityState=${lifecycle.currentState}"
             )
 
-            val optionsRow = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
+
+            // Ensure we run UI work on main thread
+            if (Looper.myLooper() != Looper.getMainLooper()) {
+                Log.w("DeepSession", "showQuestionnaire invoked off main thread. Posting to main.")
+                Handler(Looper.getMainLooper()).post {
+                    try {
+                        showQuestionnaire(questionList) // re-enter on main thread (will hit this branch but run on main)
+                    } catch (e: Exception) {
+                        Log.e("DeepSession", "Exception while re-invoking showQuestionnaire on main thread", e)
+                    }
+                }
+                return
             }
 
-            // Create radio group for single selection and give it a stable generated id
-            val radioGroup = RadioGroup(this).apply {
-                id = View.generateViewId()
-                orientation = RadioGroup.VERTICAL
+            // Visibility changes
+            Log.d("DeepSession", "Setting questionnaire UI visibility: container=VISIBLE inputBar=GONE recyclerView=GONE")
+            questionnaireContainer.visibility = View.VISIBLE
+            inputBar.visibility = View.GONE
+            recyclerView.visibility = View.GONE
+
+            // Remove all dynamic rows (keep title at index 0 and submit button at the end)
+            Log.d("DeepSession", "Cleaning up questionnaireLayout children before rebuild. childCount=${questionnaireLayout.childCount}")
+            for (i in questionnaireLayout.childCount - 1 downTo 1) {
+                val view = questionnaireLayout.getChildAt(i)
+                val tagInfo = when (val t = view.tag) {
+                    null -> "null"
+                    is Pair<*, *> -> "Pair(${t.first}, ${t.second})"
+                    is String -> "String(${t})"
+                    else -> t.toString()
+                }
+                Log.v("DeepSession", "Inspecting child index=$i tag=$tagInfo")
+                if (view.tag is String || view.tag is Pair<*, *>) {
+                    questionnaireLayout.removeViewAt(i)
+                    Log.v("DeepSession", "Removed dynamic child at index=$i")
+                }
             }
 
-            options.forEach { (label, score) ->
-                val radio = RadioButton(this).apply {
-                    text = label
-                    tag = score
+            // Build rows
+            questionList.forEachIndexed { index, questionText ->
+                Log.d("DeepSession", "Building row index=$index text='${questionText.take(80)}'")
+
+                val rowTag = "q$index"
+
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(0, 12, 0, 12)
+                }
+
+                val questionLabel = TextView(this).apply {
+                    text = questionText
+                    textSize = 16f
                     setTextColor(Color.WHITE)
                 }
 
-                radio.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
+                val options = listOf(
+                    "Not at all" to 0,
+                    "Several days" to 1,
+                    "More than half the days" to 2,
+                    "Nearly every day" to 3
+                )
 
-                        // Emergency trigger for PHQ‑9 item 9
-                        if (index == 8 && score >= 1) {
-                            showEmergencyDialog()
-                        }
-
-                        deepManager.updateAssessmentScore(index, score)
-                    }
+                val optionsRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
                 }
 
-                radioGroup.addView(radio)
+                val radioGroup = RadioGroup(this).apply {
+                    id = View.generateViewId()
+                    orientation = RadioGroup.VERTICAL
+                }
+
+                Log.d("DeepSession", "Created RadioGroup for row=$rowTag id=${radioGroup.id}")
+
+                options.forEach { (label, score) ->
+                    val radio = RadioButton(this).apply {
+                        text = label
+                        tag = score
+                        setTextColor(Color.WHITE)
+                    }
+
+                    radio.setOnCheckedChangeListener { _, isChecked ->
+                        if (isChecked) {
+                            Log.d("DeepSession", "Radio checked | row=$rowTag label='$label' score=$score thread=${Thread.currentThread().name}")
+
+                            // Emergency trigger for PHQ‑9 item 9
+                            if (index == 8 && score >= 1) {
+                                Log.i("DeepSession", "PHQ9 item 9 triggered emergency dialog (index=8 score=$score)")
+                                try {
+                                    showEmergencyDialog()
+                                } catch (e: Exception) {
+                                    Log.e("DeepSession", "Exception in showEmergencyDialog()", e)
+                                }
+                            }
+
+                            try {
+                                deepManager.updateAssessmentScore(index, score)
+                                Log.v("DeepSession", "updateAssessmentScore called for index=$index score=$score")
+                            } catch (e: Exception) {
+                                Log.e("DeepSession", "Exception while calling updateAssessmentScore(index=$index, score=$score)", e)
+                            }
+                        }
+                    }
+
+                    radioGroup.addView(radio)
+                }
+
+                optionsRow.addView(radioGroup)
+
+                row.addView(questionLabel)
+                row.addView(optionsRow)
+
+                // store both the question tag string and the radioGroup id in the row.tag as a Pair
+                row.tag = Pair(rowTag, radioGroup.id)
+                Log.d("DeepSession", "Row tag set | row=$rowTag radioGroupId=${radioGroup.id}")
+
+                // Insert above submit button
+                val insertIndex = questionnaireLayout.childCount - 1
+                questionnaireLayout.addView(row, insertIndex)
+                Log.v("DeepSession", "Inserted row at index=$insertIndex for $rowTag")
             }
 
-            optionsRow.addView(radioGroup)
-
-            row.addView(questionLabel)
-            row.addView(optionsRow)
-
-            // store both the question tag string and the radioGroup id in the row.tag as a Pair
-            row.tag = Pair(rowTag, radioGroup.id)
-
-            // Insert above submit button
-            questionnaireLayout.addView(row, questionnaireLayout.childCount - 1)
+            Log.d("DeepSession", "Finished building questionnaire UI. finalChildCount=${questionnaireLayout.childCount}")
+        } catch (e: Exception) {
+            Log.e("DeepSession", "Unhandled exception in showQuestionnaire()", e)
         }
     }
 
-
-
-    private fun showDiagnosisReadyDialog() {
-        val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle("Diagnosis Ready")
-            .setMessage("I have enough information to make a diagnosis. Would you like to continue?")
-            .setCancelable(false)
-            .setPositiveButton("Yes") { _, _ ->
-
-                // 1. Collect symptoms (keeps the same downstream message semantics)
-                val selected = collectSelectedSymptoms()
-
-                // 1b. Build assessmentScores map expected by updateFromAssessmentScores
-                // If collectSelectedSymptoms returns tags like "q3", treat them as score>0 (use 1).
-                // If you have a canonical source of full scores (RadioGroup), prefer building the full map there.
-                val assessmentScores = mutableMapOf<Int, Int>()
-                for (tag in selected) {
-                    val idx = tag.removePrefix("q").toIntOrNull()
-                    if (idx != null) assessmentScores[idx] = 1
-                }
-
-                // 2. Update engine using the assessment-based API
-                symptomEngine.updateFromAssessmentScores(assessmentScores)
-
-                // 3. Update deep session state
-                deepManager.setQuestionnaireCompleted()
-                deepManager.advancePhaseIfNeeded()
-
-                // 4. Hide questionnaire UI
-                questionnaireContainer.visibility = View.GONE
-                inputBar.visibility = View.VISIBLE
-                recyclerView.visibility = View.VISIBLE
-
-                enableChatInput()
-
-                // 5. Send diagnosis
-                sendDiagnosisMessage(selected)
-            }
-            .setNegativeButton("No") { d, _ ->
-                hasDismissedDiagnosisPopup = true   // 🔥 Prevent popup from showing again
-                d.dismiss()
-            }
-            .show()
-
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-            ?.setTextColor(Color.parseColor("#4CAF50")) // Green
-
-        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
-            ?.setTextColor(Color.parseColor("#F44336")) // Red
-    }
 
 
     suspend fun classifyIntent(userMessage: String): String {
@@ -2456,6 +3034,7 @@ Return ONLY the category name.
             }
             .setNegativeButton("I'm not in immediate danger") { d, _ ->
                 d.dismiss()
+
             }
             .show()
 
@@ -2579,6 +3158,249 @@ $rawText
         return response.choices.first().message?.content?.trim()
             ?: "Unable to summarise this therapy type."
     }
+
+    private fun assessmentScoreLabel(score: Int): String {
+        return when (score) {
+            0 -> "Not at all"
+            1 -> "Several days"
+            2 -> "More than half the days"
+            3 -> "Nearly every day"
+            else -> "Not answered"
+        }
+    }
+
+    private fun buildAssessmentAnswerSummary(
+        questionnaire: QuestionnaireType,
+        scores: Map<Int, Int>
+    ): String {
+
+        // Select the correct question list
+        val questions = when (questionnaire) {
+            QuestionnaireType.PHQ9 -> QuestionnaireData.phq9
+            QuestionnaireType.GAD7 -> QuestionnaireData.gad7
+        }
+
+        val questionnaireName = questionnaire.name
+
+        // Build answer lines
+        val answers = questions.mapIndexed { index, question ->
+
+            // Correct score lookup (no offsets)
+            val score = scores[index] ?: 0
+
+            "${index + 1}. $question — **${assessmentScoreLabel(score)}**"
+        }
+
+        return """
+Here are your questionnaire responses:
+
+${answers.joinToString("\n")}
+
+I'll use these responses to help interpret your screening results.
+""".trimIndent()
+    }
+
+    private fun sendNextExtendedAssessmentQuestion() {
+
+        val freq = QuestionnaireData.achaDepressionFrequency
+        val diag = QuestionnaireData.achaDepressionDiagnosis
+
+        val question = when (deepManager.extendedQuestionIndex) {
+            in 0..6 -> freq[deepManager.extendedQuestionIndex]
+            in 7..10 -> diag[deepManager.extendedQuestionIndex - 7]
+            else -> {
+                // Finished extended assessment
+                deepManager.assessmentMode = AssessmentMode.STANDARD
+                deepManager.advancePhaseIfNeeded()
+                return
+            }
+        }
+
+        val prompt = """
+You are a supportive mental‑health assistant.
+
+TASK:
+- Ask the following question conversationally.
+- Keep the tone warm and non‑clinical.
+- Encourage the user to answer naturally.
+- Do NOT interpret the answer yet.
+- Only ask the question.
+
+QUESTION:
+$question
+""".trimIndent()
+
+        sendToAI(
+            userMessage = prompt,
+            emotion = "not_applicable",
+            disorder = "pending",
+            phase = "ASSESSMENT", // stays in same phase
+            exercises = emptyList(),
+            cluster = null,
+            focus = null,
+            methods = null
+        )
+    }
+
+    private suspend fun handleExtendedAssessmentResponse(userText: String) {
+
+        val idx = deepManager.extendedQuestionIndex
+        val er = deepManager.extendedResponses
+
+        when (idx) {
+
+            // -----------------------------------------------------
+            // ACCHA Emotional Frequency (dynamic 0–6 scale)
+            // -----------------------------------------------------
+            0 -> {
+                er.hopeless = classifyFrequency(userText)
+                symptomEngine.emo_1 = er.hopeless!!.toFloat()
+            }
+
+            1 -> {
+                er.overwhelmed = classifyFrequency(userText)
+                symptomEngine.emo_2 = er.overwhelmed!!.toFloat()
+            }
+
+            2 -> {
+                er.exhausted = classifyFrequency(userText)
+                symptomEngine.emo_3 = er.exhausted!!.toFloat()
+            }
+
+            3 -> {
+                er.sad = classifyFrequency(userText)
+                symptomEngine.emo_4 = er.sad!!.toFloat()
+            }
+
+            4 -> {
+                er.functionalImpairment = classifyFrequency(userText)
+                symptomEngine.emo_5 = er.functionalImpairment!!.toFloat()
+            }
+
+            // -----------------------------------------------------
+            // ACCHA Risk Indicators (binary)
+            // -----------------------------------------------------
+            5 -> {
+                er.suicidalThoughts = if (parseYesNo(userText)) 1 else 0
+                symptomEngine.emo_6 = er.suicidalThoughts!!.toFloat()
+            }
+
+            6 -> {
+                er.suicideAttempts = if (parseYesNo(userText)) 1 else 0
+                symptomEngine.emo_7 = er.suicideAttempts!!.toFloat()
+            }
+
+            // -----------------------------------------------------
+            // ACCHA Depression History / Services (binary)
+            // -----------------------------------------------------
+            7 -> {
+                er.diagnosedDepression = parseYesNo(userText)
+                symptomEngine.acha_depression =
+                    if (er.diagnosedDepression == true) 1f else 0f
+
+                // Skip 8–10 if user says "no"
+                if (er.diagnosedDepression == false) {
+                    deepManager.extendedQuestionIndex = 11
+                    finishExtendedAssessment()
+                    return
+                }
+            }
+
+            8 -> {
+                er.diagnosedLast12Months = parseYesNo(userText)
+                symptomEngine.acha_services_1 =
+                    if (er.diagnosedLast12Months == true) 1f else 0f
+            }
+
+            9 -> {
+                er.currentTherapy = parseYesNo(userText)
+                symptomEngine.acha_services_2 =
+                    if (er.currentTherapy == true) 1f else 0f
+            }
+
+            10 -> {
+                er.currentMedication = parseYesNo(userText)
+                symptomEngine.acha_services_3 =
+                    if (er.currentMedication == true) 1f else 0f
+            }
+        }
+
+        // -----------------------------------------------------
+        // Move to next question
+        // -----------------------------------------------------
+        deepManager.extendedQuestionIndex++
+
+        // -----------------------------------------------------
+        // End-of-assessment check
+        // -----------------------------------------------------
+        if (deepManager.extendedQuestionIndex >= 11) {
+            finishExtendedAssessment()
+            return
+        }
+
+        sendNextExtendedAssessmentQuestion()
+    }
+
+    private fun finishExtendedAssessment() {
+        // Reset mode
+        deepManager.assessmentMode = AssessmentMode.STANDARD
+
+        // Advance to DIAGNOSIS immediately
+        deepManager.advancePhaseIfNeeded()
+    }
+
+
+    suspend fun classifyFrequency(userMessage: String): Int {
+
+        val prompt = """
+Map the user's response to a frequency bucket from 0 to 6.
+
+ACCHA Frequency Scale:
+0 = Never
+1 = 1–2 times
+2 = 3–4 times
+3 = 5–6 times
+4 = 7–8 times
+5 = 9–10 times
+6 = 11+ times, or everyday, or very frequent
+
+Rules:
+- Interpret ANY natural language phrasing.
+- If the user expresses uncertainty (e.g., "not sure", "maybe"), choose the closest reasonable bucket.
+- If the user expresses very high frequency (e.g., "all the time", "constantly"), return 6.
+- If the user expresses very low frequency (e.g., "rarely"), return 1.
+- Return ONLY the number (0–6). No words.
+
+User response: "$userMessage"
+""".trimIndent()
+
+        val response = client.chatCompletion(
+            ChatCompletionRequest(
+                model = ModelId("gpt-4o-mini"),
+                messages = listOf(
+                    ChatMessage(
+                        role = ChatRole.System,
+                        content = prompt
+                    )
+                ),
+                temperature = 0.0
+            )
+        )
+
+        val content = response.choices.first().message.content?.trim() ?: "0"
+
+        return content.toIntOrNull() ?: 0
+    }
+
+
+    fun parseYesNo(text: String): Boolean {
+        val t = text.lowercase()
+        return "yes" in t || "yeah" in t || "yep" in t
+    }
+
+
+
+
 
     private fun normalizeName(s: String): String =
         s.trim()

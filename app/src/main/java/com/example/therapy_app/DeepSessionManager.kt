@@ -6,6 +6,8 @@ import com.aallam.openai.api.chat.ChatMessage
 import com.aallam.openai.api.chat.ChatRole
 import com.aallam.openai.api.model.ModelId
 import com.aallam.openai.client.OpenAI
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
@@ -38,13 +40,52 @@ enum class ConversationState {
     QUESTIONNAIRE_ACTIVE
 }
 
+enum class AssessmentMode {
+    STANDARD,
+    EXTENDED_PHQ9
+}
+
+data class ExtendedAssessmentResponse(
+    var hopeless: Int? = null,
+    var overwhelmed: Int? = null,
+    var exhausted: Int? = null,
+    var sad: Int? = null,
+    var functionalImpairment: Int? = null,
+    var suicidalThoughts: Int? = null,
+    var suicideAttempts: Int? = null,
+
+    var diagnosedDepression: Boolean? = null,
+    var diagnosedLast12Months: Boolean? = null,
+    var currentTherapy: Boolean? = null,
+    var currentMedication: Boolean? = null
+)
+
+
+
 class DeepSessionManager {
+
+    var medicalConditions: List<String> = emptyList()
+    var fullTimeStatus: String = ""
+    var internationalStatus: String = ""
+    var ethnicityList: List<String> = emptyList()
+
+    var assessmentMode = AssessmentMode.STANDARD
+    var extendedQuestionIndex = 0
+    val extendedResponses = ExtendedAssessmentResponse()
+
+
+    // Crisis state tracking
+    var crisisDetected: Boolean = false
+    var lastCrisisTimestamp: Long = 0L
 
     private val assessmentScores = IntArray(9) { 0 }   // PHQ‑9 default
     private var questionnaireType: QuestionnaireType? = null
 
     var contextEmotion: String? = null
     var contextCause: String? = null
+
+    var contextCauseCategory: String? = null
+
     var contextSummary: String? = null
     var selectedQuestionnaire: QuestionnaireType? = null
 
@@ -230,12 +271,21 @@ class DeepSessionManager {
         when (phase) {
 
             DeepPhase.CONTEXT_INTAKE -> {
-                // Auto‑advance ONLY when both emotion + cause are collected
+                // Auto‑advance ONLY when emotion, cause, AND questionnaire are present
                 val hasEmotion = contextEmotion != null
                 val hasCause = contextCause != null
+                val hasQuestionnaire = selectedQuestionnaire != null
 
-                if (hasEmotion && hasCause) {
+                Log.d("DeepSession", "advancePhaseIfNeeded: CONTEXT_INTAKE check | emotion=$hasEmotion cause=$hasCause questionnaire=$hasQuestionnaire")
+
+                if (hasEmotion && hasCause && hasQuestionnaire) {
                     phase = DeepPhase.ASSESSMENT
+                    Log.i("DeepSession", "Phase advanced to ASSESSMENT")
+                } else {
+                    Log.d("DeepSession", "Not advancing from CONTEXT_INTAKE; missing: " +
+                            "${if (!hasEmotion) "emotion " else ""}" +
+                            "${if (!hasCause) "cause " else ""}" +
+                            "${if (!hasQuestionnaire) "questionnaire" else ""}")
                 }
             }
 
@@ -511,6 +561,9 @@ Return ONLY the step or closure.
 
 
 
+
+
+
     fun detectChosenExercise(userMessage: String): String? {
         // Prefer canonical full-object store if available, otherwise fall back to names list
         val exercises = generatedDbtExercises?.map { it.name } ?: generatedExercises ?: return null
@@ -596,6 +649,142 @@ Return ONLY the closing message + the question.
     fun updateAssessmentScore(questionIndex: Int, score: Int) {
         assessmentScores[questionIndex] = score
     }
+
+    // Add inside DeepSessionManager
+    fun selectAndSetQuestionnaireIfNeeded() {
+        if (contextEmotion == null || contextCause == null) {
+            Log.d("DeepSession", "selectAndSetQuestionnaireIfNeeded: missing emotion or cause")
+            return
+        }
+
+        if (selectedQuestionnaire != null) {
+            Log.d("DeepSession", "selectAndSetQuestionnaireIfNeeded: already set to ${selectedQuestionnaire?.name}")
+            return
+        }
+
+        Log.d("DeepSession", "Selecting questionnaire for emotion='$contextEmotion' cause='$contextCause'")
+        val q = try {
+            QuestionnaireSelector.select(contextEmotion, contextCause)
+        } catch (e: Exception) {
+            Log.e("DeepSession", "QuestionnaireSelector.select threw", e)
+            null
+        }
+
+        selectedQuestionnaire = q ?: defaultForEmotion(contextEmotion)
+        Log.i("DeepSession", "selectedQuestionnaire set to ${selectedQuestionnaire?.name}")
+    }
+
+    private fun defaultForEmotion(emotion: String?): QuestionnaireType {
+        return when (emotion?.lowercase()?.trim()) {
+            "anxious", "anxiety", "nervous", "stressed", "overwhelmed", "worried" -> QuestionnaireType.GAD7
+            "sad", "low", "depressed", "lonely" -> QuestionnaireType.PHQ9
+            "angry", "calm", "neutral", "not sure" -> QuestionnaireType.GAD7
+            else -> QuestionnaireType.GAD7
+        }
+    }
+
+    fun shouldTriggerCrisisPopup(): Boolean {
+        val now = System.currentTimeMillis()
+
+        // If no crisis has ever been detected → show popup
+        if (!crisisDetected) {
+            crisisDetected = true
+            lastCrisisTimestamp = now
+            return true
+        }
+
+        // If crisis already detected → allow popup again only if:
+        // - 20 seconds have passed
+        // - OR the user repeats a strong crisis phrase
+        val timeSinceLast = now - lastCrisisTimestamp
+        val allowRepeat = timeSinceLast > 20_000 // 20 seconds
+
+        if (allowRepeat) {
+            lastCrisisTimestamp = now
+            return true
+        }
+
+        return false
+    }
+
+    fun isStrongCrisisMessage(text: String): Boolean {
+        val crisisPhrases = listOf(
+            "i'm going to end it",
+            "i will end it",
+            "i want to die",
+            "i'm going to kill myself",
+            "i can't go on",
+            "life feels pointless",
+            "life is pointless",
+            "i want to end everything"
+        )
+        val lower = text.lowercase()
+        return crisisPhrases.any { lower.contains(it) }
+    }
+
+    fun preloadHealthProfile(
+        auth: FirebaseAuth,
+        db: FirebaseFirestore,
+        onComplete: () -> Unit = {}
+    ) {
+        val userId = auth.currentUser?.uid ?: return
+
+        val healthRef = db.collection("users")
+            .document(userId)
+            .collection("health")
+
+        // Reset values before loading
+        medicalConditions = emptyList()
+        fullTimeStatus = ""
+        internationalStatus = ""
+        ethnicityList = emptyList()
+
+        // Track completion of both Firestore calls
+        var pending = 2
+
+        fun checkDone() {
+            pending--
+            if (pending == 0) onComplete()
+        }
+
+        // -----------------------------------------------------
+        // Load medical conditions
+        // -----------------------------------------------------
+        healthRef.document("medical_conditions")
+            .get()
+            .addOnSuccessListener { doc ->
+                medicalConditions = doc.get("conditions") as? List<String> ?: emptyList()
+                checkDone()
+            }
+            .addOnFailureListener {
+                medicalConditions = emptyList()
+                checkDone()
+            }
+
+        // -----------------------------------------------------
+        // Load demographics
+        // -----------------------------------------------------
+        healthRef.document("demographics")
+            .get()
+            .addOnSuccessListener { doc ->
+                fullTimeStatus = doc.getString("full_time_student") ?: ""
+                internationalStatus = doc.getString("international_student") ?: ""
+                ethnicityList = doc.get("race") as? List<String> ?: emptyList()
+                checkDone()
+            }
+            .addOnFailureListener {
+                fullTimeStatus = ""
+                internationalStatus = ""
+                ethnicityList = emptyList()
+                checkDone()
+            }
+    }
+
+
+
+
+
+
 
     private fun normalizeName(s: String): String =
         s.trim()

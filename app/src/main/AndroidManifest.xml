@@ -51,6 +51,8 @@
         <activity android:name=".MoodTrendsActivity"/>
         <activity android:name=".JournalEntryActivity"/>
         <activity android:name=".EmailVerificationActivity"/>
+        <activity android:name=".MedicalConditionsActivity"/>
+        <activity android:name=".DemographicsActivity"/>
 
     </application>
 

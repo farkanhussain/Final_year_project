@@ -169,7 +169,9 @@ class SymptomCollectionEngine(
             acha_depression,
             acha_services_1,
             acha_services_2,
-            acha_services_3
+            acha_services_3,
+            // --- explicit placeholder to match model input length (66) ---
+            0f
         )
 
         if (vector.size != MODEL_INPUT_DIM) {
@@ -181,6 +183,7 @@ class SymptomCollectionEngine(
 
         return vector
     }
+
 
     fun sanityCheck() {
         val v = buildModelInputVector()
@@ -237,7 +240,6 @@ class SymptomCollectionEngine(
         val phqScore = computePhq9Score()
         val gadScore = computeGad7Score()
 
-        // If phq9Pred/gad7Pred are intended as questionnaire values, update them:
         phq9Pred = phqScore.toFloat()
         gad7Pred = gadScore.toFloat()
 
@@ -245,9 +247,23 @@ class SymptomCollectionEngine(
             phq9Score = phq9Pred,
             phq9Severity = phq9Severity(),
             gad7Score = gad7Pred,
-            gad7Severity = gad7Severity()
+            gad7Severity = gad7Severity(),
+
+            acchaHopeless = emo_1,
+            acchaOverwhelmed = emo_2,
+            acchaExhausted = emo_3,
+            acchaSad = emo_4,
+            acchaFunctionalImpairment = emo_5,
+            acchaSuicidalThoughts = emo_6,
+            acchaSuicideAttempts = emo_7,
+
+            acchaDiagnosed = acha_depression == 1f,
+            acchaDiagnosed12Months = acha_services_1 == 1f,
+            acchaTherapy = acha_services_2 == 1f,
+            acchaMedication = acha_services_3 == 1f
         )
     }
+
 
 
     // -----------------------------------------------------
@@ -282,7 +298,6 @@ class SymptomCollectionEngine(
 // EMOTION DETECTION (OpenAI-powered, dynamic)
 // -----------------------------------------------------
     suspend fun detectEmotion(text: String, client: OpenAI): String {
-
         val prompt = """
 You are an emotion classifier.
 
@@ -311,26 +326,98 @@ User message:
 "$text"
 """.trimIndent()
 
-        return try {
-            val response = client.chatCompletion(
-                ChatCompletionRequest(
-                    model = ModelId("gpt-4o-mini"),
-                    messages = listOf(
-                        ChatMessage(
-                            role = ChatRole.User,
-                            content = prompt
+        Log.d("SymptomEngine", "detectEmotion called | text='${text.take(200)}' | promptLength=${prompt.length}")
+
+        // Helper to normalize labels
+        fun normalizeLabel(raw: String): String {
+            return raw.lowercase().trim().removeSurrounding("\"").replace(Regex("[^a-z]"), "")
+                .let {
+                    when {
+                        it.contains("anx") -> "anxious"
+                        it.contains("stress") -> "stressed"
+                        it.contains("depress") -> "depressed"
+                        it.contains("sad") -> "sad"
+                        it.contains("lonely") -> "lonely"
+                        it.contains("angry") -> "angry"
+                        it.contains("overwhelm") -> "overwhelmed"
+                        it.contains("calm") -> "calm"
+                        it.contains("neutral") -> "neutral"
+                        it.contains("nerv") -> "nervous"
+                        it.contains("worri") -> "worried"
+                        it.contains("low") -> "low"
+                        else -> raw.lowercase().trim()
+                    }
+                }
+        }
+
+        suspend fun callOnce(): String? {
+            return try {
+                val response = client.chatCompletion(
+                    ChatCompletionRequest(
+                        model = ModelId("gpt-4o-mini"),
+                        messages = listOf(
+                            ChatMessage(
+                                role = ChatRole.User,
+                                content = prompt
+                            )
                         )
                     )
                 )
-            )
 
-            val raw = response.choices.first().message.content?.trim() ?: "not sure"
-            raw.lowercase()
+                // Log top-level response metadata if available
+                Log.d("SymptomEngine", "OpenAI response received | choices=${response.choices.size}")
 
-        } catch (e: Exception) {
-            "not sure"
+                val choice = response.choices.firstOrNull()
+                val raw = choice?.message?.content?.trim()
+                Log.d("SymptomEngine", "Raw model output: ${raw ?: "null"}")
+
+                if (raw.isNullOrBlank()) {
+                    Log.w("SymptomEngine", "Model returned empty content")
+                    return null
+                }
+
+                // Try to parse JSON-like output if model returned structured text
+                try {
+                    val json = org.json.JSONObject(raw)
+                    val labelFromJson = when {
+                        json.has("label") -> json.optString("label")
+                        json.has("emotion") -> json.optString("emotion")
+                        else -> null
+                    }
+                    val confidenceFromJson = if (json.has("confidence")) json.optDouble("confidence", Double.NaN) else Double.NaN
+                    if (labelFromJson != null && labelFromJson.isNotBlank()) {
+                        Log.d("SymptomEngine", "Parsed JSON label='$labelFromJson' confidence=${if (!confidenceFromJson.isNaN()) confidenceFromJson else "n/a"}")
+                        return normalizeLabel(labelFromJson)
+                    }
+                } catch (je: Exception) {
+                    Log.d("SymptomEngine", "Model output not JSON or JSON parse failed: ${je.message}")
+                }
+
+                // If not JSON, take the first token/line as label
+                val firstLine = raw.lineSequence().firstOrNull()?.trim() ?: raw.trim()
+                val token = firstLine.split(Regex("\\s+|,|:")).firstOrNull() ?: firstLine
+                val normalized = normalizeLabel(token)
+                Log.d("SymptomEngine", "Using token='$token' -> normalized='$normalized'")
+                normalized
+
+            } catch (e: Exception) {
+                Log.e("SymptomEngine", "detectEmotion OpenAI call failed", e)
+                null
+            }
         }
+
+        // Try once, then one retry on failure
+        val attempt1 = callOnce()
+        if (attempt1 != null) return attempt1
+
+        Log.w("SymptomEngine", "First detectEmotion attempt returned null; retrying once")
+        val attempt2 = callOnce()
+        if (attempt2 != null) return attempt2
+
+        Log.w("SymptomEngine", "Both attempts failed or returned null; returning 'not sure'")
+        return "not sure"
     }
+
 
     // Expected input dimension from your training pipeline
 
@@ -388,55 +475,61 @@ User message:
         }
     }
 
-    fun updateFromAssessmentScores(assessmentScores: Map<Int, Int>): FloatArray {
-        // assessmentToFeatureMap must map question index (PHQ/GAD question index) -> feature index in `symptoms`
-        // e.g. assessmentToFeatureMap[0] = 5  // question 0 maps to feature index 5
-        // Provide this map in your engine initialization so this function can apply scores to the correct features.
+    fun updateFromAssessmentScores(
+        assessmentScores: Map<Int, Int>,
+        questionnaire: QuestionnaireType
+    ): FloatArray {
+
         for ((questionIndex, score) in assessmentScores) {
-            val featureIndex = assessmentToFeatureMap[questionIndex] ?: continue
+
             val newValue = score.toFloat()
 
-            // Update symptoms vector and symptomCount (existing logic)
-            val prev = symptoms[featureIndex]
-            if (prev == 0f && newValue > 0f) {
-                symptomCount++
-            } else if (prev > 0f && newValue == 0f) {
-                symptomCount = (symptomCount - 1).coerceAtLeast(0)
+            // Update symptoms[] if you use assessmentToFeatureMap
+            val featureIndex = assessmentToFeatureMap[questionIndex]
+            if (featureIndex != null) {
+                val prev = symptoms[featureIndex]
+                if (prev == 0f && newValue > 0f) {
+                    symptomCount++
+                } else if (prev > 0f && newValue == 0f) {
+                    symptomCount = (symptomCount - 1).coerceAtLeast(0)
+                }
+                symptoms[featureIndex] = newValue
             }
-            symptoms[featureIndex] = newValue
 
-            // ALSO update dedicated PHQ/GAD item fields when questionIndex maps to them
-            when (questionIndex) {
-                // PHQ‑9 questions assumed indexed 0..8
-                0 -> phq9_1NUM = newValue
-                1 -> phq9_2NUM = newValue
-                2 -> phq9_3NUM = newValue
-                3 -> phq9_4NUM = newValue
-                4 -> phq9_5NUM = newValue
-                5 -> phq9_6NUM = newValue
-                6 -> phq9_7NUM = newValue
-                7 -> phq9_8NUM = newValue
-                8 -> phq9_9NUM = newValue
+            // Update PHQ‑9 or GAD‑7 NUM fields
+            when (questionnaire) {
 
-                // GAD‑7 questions assumed indexed 9..15
-                9 -> gad7_1NUM = newValue
-                10 -> gad7_2NUM = newValue
-                11 -> gad7_3NUM = newValue
-                12 -> gad7_4NUM = newValue
-                13 -> gad7_5NUM = newValue
-                14 -> gad7_6NUM = newValue
-                15 -> gad7_7NUM = newValue
+                QuestionnaireType.PHQ9 -> {
+                    when (questionIndex) {
+                        0 -> phq9_1NUM = newValue
+                        1 -> phq9_2NUM = newValue
+                        2 -> phq9_3NUM = newValue
+                        3 -> phq9_4NUM = newValue
+                        4 -> phq9_5NUM = newValue
+                        5 -> phq9_6NUM = newValue
+                        6 -> phq9_7NUM = newValue
+                        7 -> phq9_8NUM = newValue
+                        8 -> phq9_9NUM = newValue
+                    }
+                }
 
-                // other question indices: no dedicated item field to update
-                else -> { /* no-op */
+                QuestionnaireType.GAD7 -> {
+                    when (questionIndex) {
+                        0 -> gad7_1NUM = newValue
+                        1 -> gad7_2NUM = newValue
+                        2 -> gad7_3NUM = newValue
+                        3 -> gad7_4NUM = newValue
+                        4 -> gad7_5NUM = newValue
+                        5 -> gad7_6NUM = newValue
+                        6 -> gad7_7NUM = newValue
+                    }
                 }
             }
         }
 
         return symptoms
-
-
     }
+
 
     fun computePhq9Score(): Int {
         return (phq9_1NUM + phq9_2NUM + phq9_3NUM + phq9_4NUM +
