@@ -44,9 +44,9 @@
                 android:orientation="vertical"
                 android:padding="24dp">
 
-                <!-- Therapy Insights Dashboard -->
+                <!-- Recommended Exercises Dashboard -->
                 <androidx.cardview.widget.CardView
-                    android:id="@+id/cardTherapyInsights"
+                    android:id="@+id/cardRecommendedExercises"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
@@ -63,29 +63,33 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content">
 
+                        <!-- Title -->
                         <TextView
-                            android:text="Therapy Insights"
+                            android:text="Recommended Exercises"
                             android:textSize="18sp"
                             android:textStyle="bold"
                             android:textColor="@color/white"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"/>
 
+                        <!-- Subtitle -->
                         <TextView
-                            android:text="AI reflections from your recent sessions:"
+                            android:text="AI exercises based on your recent sessions:"
                             android:textColor="@color/white"
                             android:layout_marginTop="4dp"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"/>
 
+                        <!-- Container for exercises -->
                         <LinearLayout
-                            android:id="@+id/homeTherapyInsightsContainer"
+                            android:id="@+id/homeRecommendedExercisesContainer"
                             android:orientation="vertical"
                             android:layout_marginTop="12dp"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"/>
                     </LinearLayout>
                 </androidx.cardview.widget.CardView>
+
 
                 <!-- Weekly Mood Dashboard -->
                 <androidx.cardview.widget.CardView

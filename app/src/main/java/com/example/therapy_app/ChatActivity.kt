@@ -38,7 +38,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import android.view.ViewGroup
 import android.widget.RadioGroup
 import android.widget.RadioButton
-
+import com.google.gson.Gson
 
 
 private val db = Firebase.firestore
@@ -201,7 +201,7 @@ class ChatActivity : AppCompatActivity() {
         window.setDecorFitsSystemWindows(true)
         setContentView(R.layout.activity_chat)
 
-         openedFromInsightsCard = intent.getBooleanExtra("from_insights_card", false)
+        openedFromInsightsCard = intent.getBooleanExtra("from_exercises_card", false)
         if (openedFromInsightsCard) {
             isFirstAiResponse = false
         }
@@ -540,13 +540,29 @@ class ChatActivity : AppCompatActivity() {
         recyclerView.adapter = adapter
 
 
-        val incomingInsights = intent.getStringArrayListExtra("therapy_insights")
 
-        if (incomingInsights != null && incomingInsights.isNotEmpty()) {
-            incomingInsights.forEach { insight ->
-                addMessage("Therapist Insight: $insight", isUser = false)
+        val incomingExercises = intent.getStringArrayListExtra("recommended_exercises")
+
+        if (incomingExercises != null && incomingExercises.isNotEmpty()) {
+            incomingExercises.forEach { ex ->
+                addMessage("Recommended Exercise: $ex", isUser = false)
             }
         }
+
+        val dbtJson = intent.getStringExtra("dbt_exercises_json")
+        if (dbtJson != null) {
+            val fullExercises = Gson().fromJson(dbtJson, Array<DbtExercise>::class.java).toList()
+
+            fullExercises.forEach { ex ->
+                addMessage("Steps for ${ex.name}:", isUser = false)
+
+                ex.steps.forEach { step ->
+                    addMessage("• $step", isUser = false)
+                }
+            }
+        }
+
+
 
         if (sessionId != null) {
             loadExistingSession()

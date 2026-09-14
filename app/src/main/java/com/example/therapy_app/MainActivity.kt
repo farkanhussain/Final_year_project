@@ -28,14 +28,25 @@ import androidx.appcompat.app.AlertDialog
 
 class MainActivity : AppCompatActivity() {
 
+    // Create a temporary deepManager ONLY for DBT generation
+    val tempDeepManager = DeepSessionManager()
+
+
     private lateinit var drawerLayout: DrawerLayout
     private val openAiKey = BuildConfig.OPENAI_API_KEY
 
     private var latestPrompts: List<String> = emptyList()
 
-    private var latestInsights: List<String> = emptyList()
+    private var latestExercises: List<String> = emptyList()
+
+
+
 
     // Add this at the top of your Activity
+
+    val generator = MultiTherapyExerciseGenerator()
+
+
 
 
 
@@ -114,7 +125,7 @@ class MainActivity : AppCompatActivity() {
         // ----------------------------------------------------
         loadPrompts()
         loadWeeklyMoodEmojisHome()
-        loadTherapyInsights()
+        loadRecommendedExercises()
 
 
         showMoodCheckPopup()
@@ -132,11 +143,13 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, MoodTrackingActivity::class.java))
         }
 
-        findViewById<View>(R.id.cardTherapyInsights).setOnClickListener {
+        findViewById<View>(R.id.cardRecommendedExercises).setOnClickListener {
             val intent = Intent(this, ChatActivity::class.java)
-            intent.putStringArrayListExtra("therapy_insights", ArrayList(latestInsights))
-            intent.putExtra("from_insights_card", true)
-            startActivity(intent)
+            intent.putStringArrayListExtra("recommended_exercises", ArrayList(latestExercises))
+            // Pass full DBT objects
+            intent.putExtra("dbt_exercises_json", DbtExercise.toJsonList(tempDeepManager.generatedDbtExercises))
+            intent.putExtra("from_exercises_card", true)
+
         }
     }
 
@@ -399,68 +412,93 @@ $sessionText
         }
     }
 
-    private fun loadTherapyInsights() {
+    private fun loadRecommendedExercises() {
 
         val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        val insightsContainer = findViewById<LinearLayout>(R.id.homeTherapyInsightsContainer)
+        val container = findViewById<LinearLayout>(R.id.homeRecommendedExercisesContainer)
 
-        //  If therapist messages are already cached, skip Firestore entirely
-        TherapyCache.cachedTherapistMessages?.let { cached ->
-            val combined = cached.joinToString("\n")
+        container.removeAllViews()
 
-            callOpenAIInsights(combined) { insights ->
-                latestInsights = insights
-                insightsContainer.removeAllViews()
-                insights.forEach { insightsContainer.addView(createInsightView(it)) }
-            }
-            return
-        }
-
-        // Clear UI once at the start
-        insightsContainer.removeAllViews()
-
+        // 1️⃣ Fetch recent sessions (same as insights)
         FirebaseFirestore.getInstance()
             .collection("users")
             .document(userId)
             .collection("sessions")
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .limit(8)
             .get()
             .addOnSuccessListener { result ->
 
-                // 2️⃣ Extract therapist-only messages efficiently
-                val therapistMessages = result.documents.flatMap { doc ->
-                    val messages = doc.get("messages") as? List<Map<String, Any>> ?: emptyList()
-                    messages.asSequence()
-                        .filter { msg -> msg["user"] == false }
-                        .map { msg -> msg["text"] as? String ?: "" }
-                        .toList()
-                }
+                val sessions = result.documents
 
-                if (therapistMessages.isEmpty()) {
-                    insightsContainer.addView(
-                        createInsightView("No insights yet — start a therapy session to receive guidance.")
-                    )
+                if (sessions.isEmpty()) {
+                    showFallbackExercises(container)
                     return@addOnSuccessListener
                 }
 
-                // 3️⃣ Cache messages globally for next time
-                TherapyCache.cachedTherapistMessages = therapistMessages
-
-                val combined = therapistMessages.joinToString("\n")
-
-                // 4️⃣ Call OpenAI once and update UI
-                callOpenAIInsights(combined) { insights ->
-                    latestInsights = insights
-                    insightsContainer.removeAllViews()
-                    insights.forEach { insightsContainer.addView(createInsightView(it)) }
+                // 2️⃣ Extract text from sessions (same as insights)
+                val sessionText = sessions.joinToString("\n") { doc ->
+                    val messages = doc.get("messages") as? List<Map<String, Any>> ?: emptyList()
+                    messages.joinToString("\n") { msg ->
+                        val text = msg["text"] as? String ?: ""
+                        val isUser = msg["user"] as? Boolean ?: false
+                        if (text.isNotBlank()) {
+                            if (isUser) "User: $text" else "Therapist: $text"
+                        } else ""
+                    }
                 }
+
+                CoroutineScope(Dispatchers.IO).launch {
+
+                    val client = OpenAI(token = openAiKey)
+
+
+
+                    val exercises = generator.generateExercises(
+                        therapyType = "DBT",
+                        disorder = "unknown",
+                        symptoms = floatArrayOf(),
+                        userMessage = sessionText,
+                        treatmentPattern = TreatmentPattern.empty(),
+                        client = client,
+                        dynamicGenerator = { "" },
+                        deepManager = tempDeepManager,
+                        context = this@MainActivity
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        latestExercises = exercises
+                        container.removeAllViews()
+                        exercises.forEach { ex ->
+                            container.addView(createExerciseView(ex))
+                        }
+
+                        // Send full DBT objects to ChatActivity
+                        findViewById<View>(R.id.cardRecommendedExercises).setOnClickListener {
+                            val intent = Intent(this@MainActivity, ChatActivity::class.java)
+
+                            intent.putStringArrayListExtra("recommended_exercises", ArrayList(latestExercises))
+
+                            intent.putExtra(
+                                "dbt_exercises_json",
+                                DbtExercise.toJsonList(tempDeepManager.generatedDbtExercises)
+                            )
+
+                            intent.putExtra("from_exercises_card", true)
+                            startActivity(intent)
+                        }
+                    }
+                }
+
+
+            }
+            .addOnFailureListener {
+                showFallbackExercises(container)
             }
     }
 
-
-
-
-    private fun callOpenAIInsights(
-        therapistText: String,
+    private fun callOpenAIExercises(
+        sessionText: String,
         callback: (List<String>) -> Unit
     ) {
         val client = OpenAI(token = openAiKey)
@@ -474,14 +512,18 @@ $sessionText
                             ChatMessage(
                                 role = ChatRole.System,
                                 content = """
-You are a supportive therapeutic assistant.
-Summarise the therapist’s guidance into exactly 3 short, warm bullet points.
-Use simple language. No clinical terms. No long sentences.
+You are a therapeutic exercise recommender.
+Generate exactly 3 short CBT-style exercises.
+Each exercise must be actionable, simple, and 8–12 words.
+No numbering. No long sentences.
 """.trimIndent()
                             ),
                             ChatMessage(
                                 role = ChatRole.User,
-                                content = therapistText
+                                content = """
+SESSION NOTES:
+$sessionText
+""".trimIndent()
                             )
                         ),
                         temperature = 0.7
@@ -489,24 +531,47 @@ Use simple language. No clinical terms. No long sentences.
                 )
 
                 val raw = response.choices.first().message?.content ?: ""
-                val insights = raw.lines()
+
+                val exercises = raw.lines()
                     .map { it.trim().removePrefix("- ").removePrefix("• ") }
                     .filter { it.isNotBlank() }
                     .take(3)
 
-                withContext(Dispatchers.Main) { callback(insights) }
+                withContext(Dispatchers.Main) { callback(exercises) }
 
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    callback(listOf("Unable to load insights right now."))
+                    callback(
+                        listOf(
+                            "Try a 1‑minute grounding exercise.",
+                            "Write down one recurring thought today.",
+                            "Do a short slow‑breathing routine."
+                        )
+                    )
                 }
             }
         }
     }
 
+    private fun showFallbackExercises(container: LinearLayout) {
+
+        val fallback = listOf(
+            "Try a 1‑minute grounding exercise.",
+            "Write down one recurring thought today.",
+            "Do a short slow‑breathing routine."
+        )
+
+        latestExercises = fallback
+
+        container.removeAllViews()
+        fallback.forEach { ex ->
+            container.addView(createExerciseView(ex))
+        }
+    }
 
 
-    private fun createInsightView(text: String): View {
+
+    private fun createExerciseView(text: String): View {
         val tv = TextView(this)
         tv.text = "• $text"
         tv.setTextColor(resources.getColor(R.color.white, null))
@@ -515,25 +580,28 @@ Use simple language. No clinical terms. No long sentences.
         return tv
     }
 
-    private fun refreshInsightsFromCache() {
-        val insightsContainer = findViewById<LinearLayout>(R.id.homeTherapyInsightsContainer)
+
+    private fun refreshExercisesFromCache() {
+        val container = findViewById<LinearLayout>(R.id.homeRecommendedExercisesContainer)
 
         // If no cache exists, fall back to full load
-        val cached = TherapyCache.cachedTherapistMessages ?: return loadTherapyInsights()
+        val cached = TherapyCache.cachedTherapistMessages ?: return loadRecommendedExercises()
 
         val combined = cached.joinToString("\n")
 
-        callOpenAIInsights(combined) { insights ->
-            latestInsights = insights
-            insightsContainer.removeAllViews()
-            insights.forEach { insightsContainer.addView(createInsightView(it)) }
+        callOpenAIExercises(combined) { exercises ->
+            latestExercises = exercises
+            container.removeAllViews()
+            exercises.forEach { ex ->
+                container.addView(createExerciseView(ex))
+            }
         }
     }
 
 
     override fun onResume() {
         super.onResume()
-        refreshInsightsFromCache()   // 🔥 Regenerate insights using cached messages
+        refreshExercisesFromCache()   // 🔥 Regenerate insights using cached messages
     }
 
     private fun showMoodCheckPopup() {
@@ -632,7 +700,6 @@ Use simple language. No clinical terms. No long sentences.
             else -> -1
         }
     }
-
 
 
 
