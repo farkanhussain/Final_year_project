@@ -64,6 +64,14 @@ data class ExtendedAssessmentResponse(
 
 class DeepSessionManager {
 
+    private val completedExerciseNames = mutableSetOf<String>()
+
+    var currentExercise: DbtExercise? = null
+        private set
+
+    var waitingForAnotherExercise: Boolean = false
+
+
     var medicalConditions: List<String> = emptyList()
     var fullTimeStatus: String = ""
     var internationalStatus: String = ""
@@ -96,25 +104,21 @@ class DeepSessionManager {
     // ⭐ NEW: full step list for the chosen exercise
     var currentExerciseSteps: List<String> = emptyList()
 
-    // ⭐ NEW: index of the current step
-    var currentExerciseStepIndex: Int = 0
 
     // ⭐ NEW: name of the chosen exercise
     var currentExerciseName: String = ""
 
-
     var currentExerciseStep: Int = 0
-    val maxExerciseSteps: Int = 3
+
 
 
     // ⭐ Stores the currently selected exercise
-    var currentExercise: String? = null
 
 
 
     private var generatedExercises: List<String> = emptyList()
 
-    var awaitingExerciseConsent = false
+
 
     var therapyType: String? = null
 
@@ -172,7 +176,7 @@ class DeepSessionManager {
         private set
 
     private var questionnaireCompleted = false
-    private var diagnosisDelivered = false
+    var diagnosisDelivered = false
     private var patternDelivered = false
     var therapyTypeDelivered = false
 
@@ -220,6 +224,15 @@ class DeepSessionManager {
 
         // Reset generated exercises
         generatedExercises = emptyList()
+        generatedDbtExercises = null
+
+        waitingForAnotherExercise = false
+
+        currentExercise=null
+        currentExerciseName = ""
+        currentExerciseSteps = emptyList()
+        currentExerciseStep = 0
+
 
         // Reset conversation state machine
         resetConversation()
@@ -394,52 +407,61 @@ class DeepSessionManager {
 
 
 
-
-    fun moodIndexToEmoji(index: Int): String {
-        return when (index) {
-            0 -> "😢"
-            1 -> "😕"
-            2 -> "😐"
-            3 -> "🙂"
-            4 -> "😄"
-            else -> "🙂"
-        }
-    }
-
-
-
     fun beginExercise(exercise: DbtExercise) {
+        currentExercise = exercise
+
         currentExerciseName = exercise.name
         currentExerciseSteps = exercise.steps
-        currentExerciseStepIndex = 0
+        currentExerciseStep = 0
+        waitingForAnotherExercise = false
+
         phase = DeepPhase.EXERCISE_GUIDANCE
-    }
 
-
-    fun advanceExerciseStep() {
-
-        // ⭐ LOG: Before increment
         Log.d(
-            "EXERCISE_FLOW_STEPADV",
-            "advanceExerciseStep(): BEFORE increment -> currentStepIndex=$currentExerciseStep"
-        )
-        currentExerciseStep++
-        // ⭐ LOG: After increment
-        Log.d(
-            "EXERCISE_FLOW_STEPADV",
-            "advanceExerciseStep(): AFTER increment -> currentStepIndex=$currentExerciseStep"
+            "EXERCISE_FLOW",
+            "Started exercise: ${exercise.name} | steps=${exercise.steps.size}"
         )
     }
+
+
+
+
+    fun advanceExerciseStep(): Boolean {
+        if (currentExerciseSteps.isEmpty()) {
+            return false
+        }
+
+        if (currentExerciseStep < currentExerciseSteps.lastIndex) {
+            currentExerciseStep++
+
+            Log.d(
+                "EXERCISE_FLOW_STEPADV",
+                "Advanced to step index=$currentExerciseStep"
+            )
+
+            return true
+        }
+
+        Log.d(
+            "EXERCISE_FLOW_STEPADV",
+            "Already at final step index=$currentExerciseStep"
+        )
+
+        return false
+    }
+
 
     fun isExerciseComplete(): Boolean {
+        if (currentExerciseSteps.isEmpty()) {
+            return false
+        }
 
-        val complete = currentExerciseStep >= currentExerciseSteps.size
+        val complete = currentExerciseStep >= currentExerciseSteps.lastIndex
 
-        // ⭐ LOG: Completion evaluation
         Log.d(
             "EXERCISE_FLOW_COMPLETE",
-            "isExerciseComplete(): stepIndex=$currentExerciseStep, " +
-                    "totalSteps=${currentExerciseSteps.size}, " +
+            "stepIndex=$currentExerciseStep, " +
+                    "lastIndex=${currentExerciseSteps.lastIndex}, " +
                     "complete=$complete"
         )
 
@@ -447,13 +469,38 @@ class DeepSessionManager {
     }
 
 
-
     fun endExercise() {
+
+        Log.d(
+            "EXERCISE_FLOW_END",
+            "Ending exercise. Clearing exercise state."
+        )
+
+        if (currentExerciseName.isNotBlank()) {
+            completedExerciseNames.add(currentExerciseName)
+        }
+
+        currentExercise = null
         currentExerciseName = ""
         currentExerciseSteps = emptyList()
         currentExerciseStep = 0
+
+        waitingForAnotherExercise = true
+
         phase = DeepPhase.THERAPY_EXERCISES
+
+        Log.d(
+            "EXERCISE_FLOW_END",
+            "Exercise ended. Phase reset to THERAPY_EXERCISES."
+        )
     }
+
+    fun remainingExercises(): List<DbtExercise> {
+        return generatedDbtExercises
+            ?.filter { it.name !in completedExerciseNames }
+            ?: emptyList()
+    }
+
 
 
 
@@ -462,95 +509,171 @@ class DeepSessionManager {
         userInput: String,
         disorder: String,
         symptoms: FloatArray,
-        steps: List<String>,          // ⭐ NEW: full step list
-        stepIndex: Int,               // ⭐ NEW: current step index
+        steps: List<String>,
+        stepIndex: Int,
         client: OpenAI
     ): String {
 
-        // ⭐ LOG: Incoming parameters
         Log.d(
             "EXERCISE_FLOW_STEPGEN",
-            "generateExerciseStep() called with: " +
+            "generateExerciseStep() called: " +
                     "exerciseName=$exerciseName, " +
                     "stepIndex=$stepIndex, " +
-                    "stepsSize=${steps.size}, " +
-                    "userInput=\"$userInput\""
+                    "stepsSize=${steps.size}"
         )
 
-        val isFinalStep = stepIndex >= steps.size - 1
-        val currentStep = steps.getOrNull(stepIndex) ?: "Unknown Step"
-        val remainingSteps = if (!isFinalStep) steps.drop(stepIndex + 1) else emptyList()
+        // ---------------------------------------------------------
+        // Safety checks
+        // ---------------------------------------------------------
 
-        // ⭐ LOG: Step resolution
+        if (steps.isEmpty()) {
+            return "Let's pause here for now."
+        }
+
+        val safeIndex = stepIndex.coerceIn(0, steps.lastIndex)
+
+        val currentStep = steps[safeIndex]
+
+        val isFinalStep = safeIndex == steps.lastIndex
+
+        val remainingSteps =
+            if (!isFinalStep) {
+                steps.drop(safeIndex + 1)
+            } else {
+                emptyList()
+            }
+
         Log.d(
             "EXERCISE_FLOW_STEPGEN",
-            "Resolved step: currentStep=\"$currentStep\", " +
-                    "isFinalStep=$isFinalStep, " +
-                    "remainingSteps=${remainingSteps.joinToString()}"
+            "Resolved step: " +
+                    "safeIndex=$safeIndex, " +
+                    "currentStep=\"$currentStep\", " +
+                    "isFinalStep=$isFinalStep"
         )
 
-        val prompt = """
-You are a warm, evidence‑based mental health assistant guiding the user through a therapeutic exercise.
+        // ---------------------------------------------------------
+        // FINAL STEP
+        // ---------------------------------------------------------
 
-EXERCISE: $exerciseName
-CURRENT STEP: $currentStep
-REMAINING STEPS: ${remainingSteps.joinToString()}
-USER INPUT: "$userInput"
+        if (isFinalStep) {
+
+            val finalPrompt = """
+You are a warm, evidence-based mental health assistant.
+
+The user is completing the final step of this therapeutic exercise.
+
+EXERCISE:
+$exerciseName
+
+FINAL STEP:
+$currentStep
+
+USER INPUT:
+"$userInput"
+
+USER CONTEXT:
+- Disorder: $disorder
+- Symptoms: ${symptoms.joinToString()}
+
+RULES:
+- Acknowledge the user's effort.
+- Briefly reflect the purpose of the final step.
+- Do NOT introduce another exercise.
+- Do NOT provide another step.
+- Do NOT ask the user to continue.
+- Do NOT ask for additional reflection.
+- Keep the response to 1–2 sentences.
+
+Return ONLY the closing message.
+""".trimIndent()
+
+            val response = client.chatCompletion(
+                ChatCompletionRequest(
+                    model = ModelId("gpt-4o-mini"),
+                    messages = listOf(
+                        ChatMessage(
+                            ChatRole.User,
+                            finalPrompt
+                        )
+                    )
+                )
+            )
+
+            return response
+                .choices
+                .firstOrNull()
+                ?.message
+                ?.content
+                ?.trim()
+                ?: "You’ve completed the exercise. Take a moment to notice how you feel."
+        }
+
+        // ---------------------------------------------------------
+        // NORMAL STEP
+        // ---------------------------------------------------------
+
+        val prompt = """
+You are a warm, evidence-based mental health assistant guiding
+the user through a therapeutic exercise.
+
+EXERCISE:
+$exerciseName
+
+CURRENT STEP:
+$currentStep
+
+REMAINING STEPS:
+${remainingSteps.joinToString("\n")}
+
+USER INPUT:
+"$userInput"
 
 USER CONTEXT:
 - Disorder: $disorder
 - Symptoms: ${symptoms.joinToString()}
 
 STRICT RULES:
-- Follow the exact step sequence shown above.
+- Respond ONLY to the CURRENT STEP.
+- Follow the exact exercise sequence.
 - Never repeat a previous step.
-- Never skip steps.
-- Never invent new steps.
+- Never skip a step.
+- Never invent a new step.
 - Never switch exercises.
-- Keep the step short (1–2 sentences).
-- Personalise the guidance based on the user's message.
-- Ask for only ONE small reflection.
-- If the user shows grounding, insight, emotional regulation, or fatigue, begin closing the exercise early.
-- If this is the FINAL STEP, provide a gentle closing message with NO further instructions.
+- Do NOT decide whether the exercise is complete.
+- Do NOT end the exercise early.
+- Keep the response to 1–2 sentences.
+- Personalise the response based on the user's message.
+- Ask for only ONE small reflection or action related to the CURRENT STEP.
+- Do not mention the remaining steps.
 
-STRUCTURE:
-1. If continuing:
-   - Provide one short step based on CURRENT STEP.
-   - End with one simple instruction (e.g., “Write one sentence about…”).
-
-2. If closing:
-   - Provide a short, supportive closing.
-   - Do NOT ask for more input.
-
-Return ONLY the step or closure.
+Return ONLY the guidance for the CURRENT STEP.
 """.trimIndent()
-
-        // ⭐ LOG: Prompt preview
-        Log.d(
-            "EXERCISE_FLOW_STEPGEN",
-            "Prompt built (first 200 chars): ${prompt.take(200)}"
-        )
 
         val response = client.chatCompletion(
             ChatCompletionRequest(
                 model = ModelId("gpt-4o-mini"),
-                messages = listOf(ChatMessage(ChatRole.User, prompt))
+                messages = listOf(
+                    ChatMessage(
+                        ChatRole.User,
+                        prompt
+                    )
+                )
             )
         )
 
-        // ⭐ LOG: Raw OpenAI response
+        val output =
+            response
+                .choices
+                .firstOrNull()
+                ?.message
+                ?.content
+                ?.trim()
+
+                ?: "Take a moment with this step, and notice what comes up for you."
+
         Log.d(
             "EXERCISE_FLOW_STEPGEN",
-            "Raw OpenAI response: ${response.choices.firstOrNull()?.message?.content}"
-        )
-
-        val output = response.choices.first().message?.content?.trim()
-            ?: "Let's continue — tell me one more thing you're noticing."
-
-        // ⭐ LOG: Final output
-        Log.d(
-            "EXERCISE_FLOW_STEPGEN",
-            "Final step output (trimmed): ${output.take(120)}"
+            "Generated step index=$safeIndex: ${output.take(120)}"
         )
 
         return output
@@ -626,13 +749,10 @@ TASK:
 - Provide a short, supportive closing message (1–2 sentences).
 - Acknowledge their effort.
 - Reflect briefly on the benefit of the exercise.
-- After the closing message, ask the user whether they want to:
-  (a) try another exercise, or
-  (b) finish the session.
+- Do NOT ask for more input.
 - Do NOT continue the exercise.
-- Do NOT ask for any exercise‑related reflection.
-
-Return ONLY the closing message + the question.
+- Do NOT ask whether they want another exercise or to finish the session.
+- Return ONLY the closing message.
 """.trimIndent()
 
         val response = client.chatCompletion(
@@ -643,8 +763,9 @@ Return ONLY the closing message + the question.
         )
 
         return response.choices.first().message?.content?.trim()
-            ?: "Great work today — would you like to try another exercise, or finish the session?"
+            ?: "Great work today — let's pause here."
     }
+
 
     fun updateAssessmentScore(questionIndex: Int, score: Int) {
         assessmentScores[questionIndex] = score
@@ -780,10 +901,79 @@ Return ONLY the closing message + the question.
             }
     }
 
+    fun detectChosenExerciseObject(userMessage: String): DbtExercise? {
 
+        val exercises = generatedDbtExercises ?: return null
 
+        val normalizedMessage = normalizeName(userMessage).lowercase()
 
+        Log.d(
+            "DetectExercise",
+            "msg=\"$normalizedMessage\""
+        )
 
+        Log.d(
+            "DetectExercise",
+            "exercises=${exercises.joinToString { it.name }}"
+        )
+
+        // 1. Exact/full exercise name
+        for (exercise in exercises) {
+
+            val normalizedExercise =
+                normalizeName(exercise.name).lowercase()
+
+            if (normalizedMessage.contains(normalizedExercise)) {
+
+                Log.d(
+                    "DetectExercise",
+                    "MATCH full=\"${exercise.name}\""
+                )
+
+                return exercise
+            }
+        }
+
+        // 2. Keyword match
+        for (exercise in exercises) {
+
+            val keyword =
+                normalizeName(exercise.name)
+                    .lowercase()
+                    .split(" ")
+                    .firstOrNull()
+                    ?: continue
+
+            if (normalizedMessage.contains(keyword)) {
+
+                Log.d(
+                    "DetectExercise",
+                    "MATCH keyword=\"${exercise.name}\""
+                )
+
+                return exercise
+            }
+        }
+
+        // 3. Generic fallback
+        val weakTriggers = listOf("yes", "ok")
+
+        if (weakTriggers.any { normalizedMessage.contains(it) }) {
+
+            val fallback = exercises.firstOrNull()
+
+            Log.d(
+                "DetectExercise",
+                "Fallback → ${fallback?.name}"
+            )
+
+            return fallback
+        }
+
+        Log.d("DetectExercise", "No match")
+
+        return null
+    }
 
 
     private fun normalizeName(s: String): String =

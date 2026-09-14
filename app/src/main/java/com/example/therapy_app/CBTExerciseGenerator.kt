@@ -195,7 +195,9 @@ You are selecting DBT exercises for a user based on their symptoms.
 RULES:
 - Select ONLY from the list provided.
 - Use the EXACT exercise names.
-- Choose 2–3 exercises that best match the user's symptoms.
+- Select 3 exercises that best match the user's symptoms.
+- Rank them from most suitable to least suitable.
+- The first exercise MUST be the single best match.
 - Provide output in this format:
 
 1) Exercise Name
@@ -230,7 +232,12 @@ ${symptoms.joinToString()}
                 .takeIf { it.isNotBlank() }
         }
 
-        return exercises.filter { it.name in cleanedNames }
+        return cleanedNames.mapNotNull { selectedName ->
+            exercises.firstOrNull {
+                it.name.equals(selectedName, ignoreCase = true)
+            }
+        }
+
     }
 
 

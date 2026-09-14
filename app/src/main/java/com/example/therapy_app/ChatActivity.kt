@@ -955,37 +955,503 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                     // NORMAL DEEP SESSION FLOW BEGINS HERE
                     // -----------------------------------------------------
 
-                    val intent = classifyIntent(userMessage)
+                    // -----------------------------------------------------
+                    // AUTO-GENERATE EXERCISES
+                    // -----------------------------------------------------
+                    // This phase is system-driven. An empty userMessage is
+                    // an internal trigger and must NOT go through intent
+                    // classification.
+
+                    if (deepManager.phase == DeepPhase.THERAPY_EXERCISES &&
+                        userMessage.isBlank() &&
+                        !deepManager.exercisesDelivered()
+                    ) {
+
+                        Log.d(
+                            "THERAPY_EXERCISES",
+                            "Entering THERAPY_EXERCISES — generating exercise list"
+                        )
+
+                        val disorder = lastDiagnosis ?: "general_distress"
+                        val therapyType = deepManager.therapyType ?: "general"
+
+                        Log.d(
+                            "THERAPY_EXERCISES",
+                            "Starting exercise generation. disorder=$disorder, therapyType=$therapyType"
+                        )
+
+                        // ---------------------------------------------------------
+                        // 1. GENERATE EXERCISES
+                        // ---------------------------------------------------------
+
+                        val exerciseNames = withContext(Dispatchers.IO) {
+
+                            MultiTherapyExerciseGenerator().generateExercises(
+                                therapyType = therapyType,
+                                disorder = disorder,
+                                symptoms = symptomEngine.getSymptoms(),
+                                userMessage = "",
+                                treatmentPattern = deepManager.getTreatmentPattern(
+                                    disorder,
+                                    symptomEngine.getSymptoms(),
+                                    5f, 5f, 5f, 5f, 5f,
+                                    80f,
+                                    "neutral"
+                                ),
+                                client = client,
+
+                                dynamicGenerator = { prompt: String ->
+
+                                    val response = client.chatCompletion(
+                                        ChatCompletionRequest(
+                                            model = ModelId("gpt-4o-mini"),
+                                            messages = listOf(
+                                                ChatMessage(
+                                                    ChatRole.User,
+                                                    prompt
+                                                )
+                                            )
+                                        )
+                                    )
+
+                                    response.choices
+                                        .first()
+                                        .message
+                                        ?.content
+                                        ?: ""
+                                },
+
+                                deepManager = deepManager,
+                                context = this@ChatActivity
+                            )
+                        }
+
+                        Log.d(
+                            "THERAPY_EXERCISES",
+                            "Generated exercise names: ${exerciseNames.joinToString()}"
+                        )
+
+                        // ---------------------------------------------------------
+                        // 2. ENSURE FULL EXERCISE OBJECTS ARE CACHED
+                        // ---------------------------------------------------------
+
+                        val cachedFull = deepManager.generatedDbtExercises
+
+                        if (cachedFull == null || cachedFull.isEmpty()) {
+
+                            Log.w(
+                                "THERAPY_EXERCISES",
+                                "Generator did not cache full exercise objects"
+                            )
+
+                            val fallbackExercises = exerciseNames.map { name ->
+
+                                DbtExercise(
+                                    name = name,
+                                    description = name,
+                                    url = "https://example.com/exercises/" +
+                                            "${normalizeName(name).replace(" ", "-").lowercase()}",
+                                    steps = listOf(
+                                        "Step 1 for $name"
+                                    )
+                                )
+                            }
+
+                            deepManager.generatedDbtExercises = fallbackExercises
+
+                            Log.d(
+                                "THERAPY_EXERCISES",
+                                "Cached fallback full exercises: " +
+                                        "${fallbackExercises.map { it.name }}"
+                            )
+
+                        } else {
+
+                            Log.d(
+                                "THERAPY_EXERCISES",
+                                "Cached full exercises: " +
+                                        "${cachedFull.map { it.name }}"
+                            )
+                        }
+
+                        // ---------------------------------------------------------
+                        // 3. MAKE SURE GENERATION ACTUALLY RETURNED EXERCISES
+                        // ---------------------------------------------------------
+
+                        if (exerciseNames.isEmpty()) {
+
+                            Log.e(
+                                "THERAPY_EXERCISES",
+                                "❌ No exercises generated — cannot display exercise"
+                            )
+
+                            addMessage(
+                                text = "I’m having trouble preparing an exercise right now. Please try again in a moment.",
+                                isUser = false,
+                                type = MessageType.NORMAL
+                            )
+
+                            return@launch
+                        }
+
+                        // ---------------------------------------------------------
+                        // 4. STORE GENERATED EXERCISE NAMES
+                        // ---------------------------------------------------------
+
+                        try {
+
+                            deepManager.setGeneratedExercises(exerciseNames)
+
+                            Log.d(
+                                "THERAPY_EXERCISES",
+                                "Generated exercises stored successfully"
+                            )
+
+                        } catch (e: Exception) {
+
+                            Log.e(
+                                "THERAPY_EXERCISES",
+                                "setGeneratedExercises failed",
+                                e
+                            )
+                        }
+
+                        // ---------------------------------------------------------
+                        // 5. GET THE MOST SUITABLE EXERCISE
+                        //
+                        // The generator returns exercises in suitability order,
+                        // so the first exercise is the recommended one.
+                        // ---------------------------------------------------------
+
+                        val bestExercise = deepManager.generatedDbtExercises
+                            ?.firstOrNull()
+
+                        if (bestExercise == null) {
+
+                            Log.e(
+                                "THERAPY_EXERCISES",
+                                "❌ Could not retrieve the first full exercise object"
+                            )
+
+                            addMessage(
+                                text = "I’m having trouble preparing an exercise right now. Please try again in a moment.",
+                                isUser = false,
+                                type = MessageType.NORMAL
+                            )
+
+                            return@launch
+                        }
+
+                        // ---------------------------------------------------------
+                        // 6. BUILD CONCISE EXERCISE MESSAGE
+                        // ---------------------------------------------------------
+
+                        val exerciseMessage = buildString {
+
+                            append("I think this exercise may be a good place to start:\n\n")
+
+                            append("${bestExercise.name}\n\n")
+
+                            if (bestExercise.description.isNotBlank()) {
+                                append("${bestExercise.description}\n\n")
+                            }
+
+                            if (bestExercise.steps.isNotEmpty()) {
+
+                                append("What you'll do:\n")
+
+                                bestExercise.steps.forEachIndexed { index, step ->
+                                    append("${index + 1}. $step\n")
+                                }
+                            }
+
+                            append("\nWhen you're ready, choose this exercise and we'll go through it together.")
+                        }
+
+                        Log.d(
+                            "THERAPY_EXERCISES",
+                            "Displaying best exercise: ${bestExercise.name}"
+                        )
+
+                        Log.d(
+                            "THERAPY_EXERCISES",
+                            "Description: ${bestExercise.description}"
+                        )
+
+                        Log.d(
+                            "THERAPY_EXERCISES",
+                            "Steps: ${bestExercise.steps.joinToString()}"
+                        )
+
+                        // ---------------------------------------------------------
+                        // 7. DIRECTLY DISPLAY THE BEST EXERCISE
+                        //
+                        // Do NOT send this through OpenAI.
+                        // ---------------------------------------------------------
+
+                        addMessage(
+                            text = exerciseMessage,
+                            isUser = false,
+                            type = MessageType.NORMAL
+                        )
+
+                        // ---------------------------------------------------------
+                        // 8. ONLY NOW MARK EXERCISES AS DELIVERED
+                        // ---------------------------------------------------------
+
+                        deepManager.setExercisesDelivered()
+
+                        Log.d(
+                            "THERAPY_EXERCISES",
+                            "Best exercise displayed successfully → exercisesDelivered=true"
+                        )
+
+                        return@launch
+                    }
+
+                    // -----------------------------------------------------
+                    // INTENT HANDLER
+                    // -----------------------------------------------------
+
+                    val intent = classifyIntent(userMessage, deepManager.phase)
 
                     Log.d("ExerciseFlow", "Intent = $intent")
                     Log.d("ExerciseFlow", "Phase = ${deepManager.phase}")
-                    Log.d("ExerciseFlow", "Exercises delivered = ${deepManager.exercisesDelivered()}")
+                    Log.d(
+                        "ExerciseFlow",
+                        "Exercises delivered = ${deepManager.exercisesDelivered()}"
+                    )
 
-                    // -----------------------------------------------------
-                    // SESSION TERMINATION (UNIFIED)
-                    // -----------------------------------------------------`
+
+// -----------------------------------------------------
+// END SESSION (global)
+// -----------------------------------------------------
                     if (intent == "END_SESSION") {
+                        Log.d("ExerciseFlow", "END_SESSION detected → moving to SESSION_COMPLETE")
                         deepManager.setSessionComplete()
                         processUserMessage("")
                         return@launch
                     }
 
-                    // -----------------------------------------------------
-                    // EXERCISE SELECTION → MOVE TO EXERCISE_GUIDANCE
-                    // -----------------------------------------------------
-                    if (deepManager.exercisesDelivered() &&
-                        deepManager.phase == DeepPhase.THERAPY_EXERCISES &&
-                        (intent == "SELECT_EXERCISE" ||
-                                intent == "YES_TO_EXERCISES" ||
-                                intent == "ACKNOWLEDGEMENT")) {
 
-                        // ... your existing exercise transition logic
+
+
+// -----------------------------------------------------
+// FINISH EXERCISES → SESSION_COMPLETE
+// (only valid during EXERCISE_GUIDANCE)
+// -----------------------------------------------------
+                    if (deepManager.phase == DeepPhase.EXERCISE_GUIDANCE &&
+                        intent == "FINISHED_EXERCISES") {
+
+                        Log.d("ExerciseFlow", "FINISHED_EXERCISES detected → transitioning to SESSION_COMPLETE")
+
+                        deepManager.phase = DeepPhase.SESSION_COMPLETE
+                        processUserMessage("")   // triggers the SESSION_COMPLETE block
+
+                        return@launch
+                    }
+
+// -----------------------------------------------------
+// ANOTHER EXERCISE? — AFTER COMPLETION
+// -----------------------------------------------------
+                    if (
+                        deepManager.phase == DeepPhase.THERAPY_EXERCISES &&
+                        deepManager.waitingForAnotherExercise
+                    ) {
+
+                        // Tokenise message safely (prevents "another" from matching "no")
+                        val tokens = userMessage
+                            .lowercase()
+                            .split(" ", ",", ".", "!", "?", ";", ":")
+
+                        val wantsAnother =
+                            intent == "SELECT_EXERCISE" ||
+                                    tokens.contains("yes") ||
+                                    tokens.contains("another") ||
+                                    tokens.contains("next") ||
+                                    tokens.contains("sure")
+
+                        val wantsToFinish =
+                            intent == "END_SESSION" ||
+                                    tokens.contains("no") ||
+                                    tokens.contains("finish") ||
+                                    tokens.contains("done")
+
+                        if (wantsToFinish) {
+
+                            Log.d("EXERCISE_FLOW", "User does not want another exercise → SESSION_COMPLETE")
+
+                            deepManager.waitingForAnotherExercise = false
+                            deepManager.setSessionComplete()
+
+                            processUserMessage("")
+                            return@launch
+                        }
+
+                        if (wantsAnother) {
+
+                            Log.d("EXERCISE_FLOW", "User wants another exercise → showing remaining exercises")
+
+                            deepManager.waitingForAnotherExercise = false
+
+                            // Get remaining exercises (excludes completed ones)
+                            val remainingExercises = deepManager.remainingExercises()
+
+                            Log.d("EXERCISE_FLOW", "Remaining exercises: ${remainingExercises.map { it.name }}")
+
+                            // If none remain → finish session
+                            if (remainingExercises.isEmpty()) {
+
+                                Log.d("EXERCISE_FLOW", "No remaining exercises → SESSION_COMPLETE")
+
+                                deepManager.setSessionComplete()
+                                processUserMessage("")
+                                return@launch
+                            }
+
+                            // Show remaining exercises
+                            val exerciseMessage = buildString {
+                                append("Absolutely. Here are the other exercises you can try:\n\n")
+                                remainingExercises.forEachIndexed { index, exercise ->
+                                    append("${index + 1}. ${exercise.name}\n")
+                                    append("${exercise.description}\n\n")
+                                }
+                                append("Choose one you'd like to try.")
+                            }
+
+                            addMessage(
+                                text = exerciseMessage,
+                                isUser = false,
+                                type = MessageType.NORMAL
+                            )
+
+                            return@launch
+                        }
+
+                        // If unclear → ask again
+                        addMessage(
+                            text = "Would you like to try another exercise, or finish the session?",
+                            isUser = false,
+                            type = MessageType.NORMAL
+                        )
+
+                        return@launch
+                    }
+
+                    // -----------------------------------------------------
+                    // EXERCISE SELECTION (THERAPY_EXERCISES)
+                    // -----------------------------------------------------
+                    if (deepManager.phase == DeepPhase.THERAPY_EXERCISES &&
+                        deepManager.exercisesDelivered() &&
+                        (
+                                intent == "SELECT_EXERCISE" ||
+                                        deepManager.detectChosenExercise(userMessage) != null
+                                )
+                    ) {
+
+                        Log.d("EXERCISE_TRANSITION", "Exercise selection triggered")
+                        Log.d("EXERCISE_TRANSITION", "intent=$intent")
+                        Log.d("EXERCISE_TRANSITION", "userMessage=\"$userMessage\"")
+
+                        // ---------------------------------------------------------
+                        // 1. Detect the FULL selected exercise object
+                        // ---------------------------------------------------------
+
+                        val selectedExercise =
+                            deepManager.detectChosenExerciseObject(userMessage)
+
+                        Log.d(
+                            "EXERCISE_TRANSITION",
+                            "selectedExercise=${selectedExercise?.name}"
+                        )
+
+                        // ---------------------------------------------------------
+                        // 2. Make sure an exercise was actually selected
+                        // ---------------------------------------------------------
+
+                        if (selectedExercise == null) {
+
+                            Log.e(
+                                "EXERCISE_TRANSITION",
+                                "❌ Could not identify selected exercise"
+                            )
+
+                            addMessage(
+                                text = "I couldn't tell which exercise you'd like to try. Please tell me the exercise name.",
+                                isUser = false,
+                                type = MessageType.NORMAL
+                            )
+
+                            return@launch
+                        }
+
+                        // ---------------------------------------------------------
+                        // 3. Start the selected exercise
+                        // ---------------------------------------------------------
+
+                        deepManager.beginExercise(selectedExercise)
+
+                        Log.d(
+                            "EXERCISE_TRANSITION",
+                            "beginExercise() → " +
+                                    "name=${deepManager.currentExerciseName}, " +
+                                    "step=${deepManager.currentExerciseStep}, " +
+                                    "steps=${deepManager.currentExerciseSteps.size}"
+                        )
+
+                        // ---------------------------------------------------------
+                        // 4. Generate FIRST STEP
+                        // ---------------------------------------------------------
+
+                        val firstStep = withContext(Dispatchers.IO) {
+
+                            try {
+
+                                deepManager.generateExerciseStep(
+                                    exerciseName = selectedExercise.name,
+                                    userInput = "",
+                                    disorder = lastDiagnosis ?: "general_distress",
+                                    symptoms = symptomEngine.getSymptoms(),
+                                    steps = selectedExercise.steps,
+                                    stepIndex = deepManager.currentExerciseStep,
+                                    client = client
+                                )
+
+                            } catch (e: Exception) {
+
+                                Log.e(
+                                    "EXERCISE_TRANSITION",
+                                    "Error generating first step",
+                                    e
+                                )
+
+                                selectedExercise.steps.firstOrNull()
+                                    ?: "Let's begin by taking a moment to focus on this exercise."
+                            }
+                        }
+
+                        // ---------------------------------------------------------
+                        // 5. Display FIRST STEP
+                        // ---------------------------------------------------------
+
+                        addMessage(
+                            text = firstStep,
+                            isUser = false,
+                            type = MessageType.NORMAL
+                        )
+
+                        Log.d(
+                            "EXERCISE_TRANSITION",
+                            "First step displayed for ${selectedExercise.name}"
+                        )
+
+                        return@launch
                     }
 
 
                     // -----------------------------------------------------
-// 1. PHASE SYSTEM (diagnostic + defensive)
-// -----------------------------------------------------
+                    // 1. PHASE SYSTEM (diagnostic + defensive)
+                    // -----------------------------------------------------
                     Log.d("DeepSession", "Current phase: ${deepManager.phase} | session=${deepManager::class.simpleName}")
 
                     when (deepManager.phase) {
@@ -1445,6 +1911,32 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
 
                         DeepPhase.DIAGNOSIS -> {
 
+                            Log.e(
+                                "PHASE_TRACE",
+                                ">>> ENTERING DIAGNOSIS PHASE <<< " +
+                                        "| diagnosisDelivered=${deepManager.diagnosisDelivered} " +
+                                        "| phase=${deepManager.phase} " +
+                                        "| userMessage=\"$userMessage\""
+                            )
+
+                            // -----------------------------------------------------
+                            // GUARD — Prevent repeated diagnosis generation
+                            // -----------------------------------------------------
+                            if (deepManager.diagnosisDelivered) {
+
+                                Log.w(
+                                    "DiagnosisDebug",
+                                    "DIAGNOSIS already delivered — skipping duplicate diagnosis generation."
+                                )
+
+                                Log.e(
+                                    "PHASE_TRACE",
+                                    ">>> EXITING DIAGNOSIS (already delivered) <<<"
+                                )
+
+                                return@launch
+                            }
+
                             Log.d(
                                 "DeepSession",
                                 "Entering DIAGNOSIS | " +
@@ -1458,12 +1950,21 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                             val questionnaire = deepManager.selectedQuestionnaire
 
                             if (questionnaire == null) {
-                                Log.w("DeepSession", "DIAGNOSIS entered but selectedQuestionnaire is null.")
+                                Log.w(
+                                    "DeepSession",
+                                    "DIAGNOSIS entered but selectedQuestionnaire is null."
+                                )
 
                                 addMessage(
                                     "I couldn't determine which questionnaire was completed. Please try again.",
                                     isUser = false
                                 )
+
+                                Log.e(
+                                    "PHASE_TRACE",
+                                    ">>> EXITING DIAGNOSIS (null questionnaire) <<<"
+                                )
+
                                 return@launch
                             }
 
@@ -1471,49 +1972,61 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                             // Safety check — scores must exist
                             // -----------------------------------------------------
                             if (latestAssessmentScores.isEmpty()) {
-                                Log.w("DeepSession", "DIAGNOSIS entered but no assessment scores were stored.")
+                                Log.w(
+                                    "DeepSession",
+                                    "DIAGNOSIS entered but no assessment scores were stored."
+                                )
 
                                 addMessage(
                                     "I couldn't find your questionnaire responses. Please complete the questionnaire again.",
                                     isUser = false
                                 )
+
+                                Log.e(
+                                    "PHASE_TRACE",
+                                    ">>> EXITING DIAGNOSIS (empty scores) <<<"
+                                )
+
                                 return@launch
                             }
 
                             // -----------------------------------------------------
-                            // IMPORTANT:
-                            // The questionnaire summary is now sent in the submit handler.
-                            // DO NOT send it here anymore.
+                            // The questionnaire summary is sent by the submit handler.
+                            // This phase only generates the diagnosis interpretation.
                             // -----------------------------------------------------
 
-                            // -----------------------------------------------------
-                            // Generate diagnosis interpretation
-                            // -----------------------------------------------------
-                            Log.d("DiagnosisDebug", "Sending questionnaire results for diagnosis")
+                            Log.e(
+                                "DiagnosisDebug",
+                                "Sending diagnosis message | " +
+                                        "diagnosisDelivered(beforeSend)=${deepManager.diagnosisDelivered} " +
+                                        "| symptoms=$latestSelectedSymptoms"
+                            )
 
                             sendDiagnosisMessage(latestSelectedSymptoms)
 
-                            // sendDiagnosisMessage():
-                            // - sends PHQ/GAD screening results
-                            // - sends interpretation
-                            // - marks diagnosis delivered
-                            // - DOES NOT advance phase anymore
+                            Log.e(
+                                "PHASE_TRACE",
+                                "Diagnosis generation initiated. Waiting for AI delivery callback."
+                            )
 
-                            deepManager.advancePhaseIfNeeded()
+                            Log.e(
+                                "PHASE_TRACE",
+                                ">>> EXITING DIAGNOSIS PHASE <<<"
+                            )
 
                             return@launch
                         }
+
 
                         DeepPhase.TREATMENT_PATTERN -> {
 
                             Log.d(
                                 "DeepSession",
-                                "Entering TREATMENT_PATTERN | " +
-                                        "lastDiagnosis=$lastDiagnosis"
+                                "Entering TREATMENT_PATTERN | lastDiagnosis=$lastDiagnosis"
                             )
 
                             // -----------------------------------------------------
-                            // Lock user input while treatment pattern is generated
+                            // Lock user input while background processing occurs
                             // -----------------------------------------------------
 
                             isUserInputLocked = true
@@ -1527,7 +2040,7 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                                 val disorder = lastDiagnosis ?: "general_distress"
 
                                 // -----------------------------------------------------
-                                // 2. Get confirmed symptoms from symptom engine
+                                // 2. Get confirmed symptoms
                                 // -----------------------------------------------------
 
                                 val symptoms = symptomEngine.getSymptoms()
@@ -1542,11 +2055,6 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                                 // -----------------------------------------------------
                                 // 3. Generate treatment pattern
                                 // -----------------------------------------------------
-                                //
-                                // These values are currently your existing defaults.
-                                // Keep them here unless you have actual values available
-                                // elsewhere in your session.
-                                //
 
                                 val pattern = withContext(Dispatchers.IO) {
 
@@ -1578,7 +2086,7 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                                 deepManager.setLastTreatmentPattern(pattern)
 
                                 // -----------------------------------------------------
-                                // 5. Mark treatment pattern as delivered
+                                // 5. Mark treatment pattern as complete
                                 // -----------------------------------------------------
 
                                 deepManager.setPatternDelivered()
@@ -1589,18 +2097,28 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                                 )
 
                                 // -----------------------------------------------------
-                                // 6. Advance to next phase
+                                // 6. Advance immediately
+                                //
+                                // TREATMENT_PATTERN is background-only.
+                                // No user-facing message is generated here.
                                 // -----------------------------------------------------
 
                                 deepManager.advancePhaseIfNeeded()
 
-                                // Trigger next phase immediately (critical)
-                                processUserMessage("")
-
                                 Log.d(
                                     "DeepSession",
-                                    "Phase after treatment pattern: ${deepManager.phase}"
+                                    "Treatment pattern complete → phase=${deepManager.phase}"
                                 )
+
+                                // -----------------------------------------------------
+                                // 7. Continue immediately into the next background
+                                // phase.
+                                //
+                                // If THERAPY_TYPE is also background-only, process it
+                                // here rather than waiting for user input.
+                                // -----------------------------------------------------
+
+                                processUserMessage("")
 
                             } catch (e: Exception) {
 
@@ -1609,10 +2127,6 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                                     "Error generating treatment pattern",
                                     e
                                 )
-
-                                // -----------------------------------------------------
-                                // Safety fallback
-                                // -----------------------------------------------------
 
                                 addMessage(
                                     "I’m having a little trouble preparing the next part of your support plan. " +
@@ -1623,22 +2137,15 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                             } finally {
 
                                 // -----------------------------------------------------
-                                // Always unlock input
+                                // Unlock only after the background transition has
+                                // finished processing.
                                 // -----------------------------------------------------
 
                                 isUserInputLocked = false
                             }
 
-                            // -----------------------------------------------------
-                            // Do not continue processing the current user message
-                            // through another phase.
-                            // -----------------------------------------------------
-
                             return@launch
                         }
-
-
-
 
                         DeepPhase.THERAPY_TYPE -> {
 
@@ -1789,140 +2296,71 @@ REQUIREMENTS
                             deepManager.advancePhaseIfNeeded()
                             Log.d("DeepSession", "Phase after therapy type: ${deepManager.phase}")
 
-                            deepManager.awaitingExerciseConsent = true
                             isUserInputLocked = false
 
                             // ---------------------------------------------------------
-                            // 5. SEND FINAL MESSAGE TO USER
+                            // 5. Continue immediately into next phase
+                            //
+                            // THERAPY_TYPE is background-only.
+                            // No user-facing response is generated here.
                             // ---------------------------------------------------------
-                            addMessage(
-                                "Based on everything so far, the most suitable therapy approach is $fullName.\n\n" +
-                                        "$summary\n\n" +
-                                        (therapyUrl?.let { "You can read the full definition here:\n$it\n\n" } ?: "") +
-                                        "Would you like to try some $chosenTherapyType exercises to help you apply this approach in a practical, supportive way?",
-                                false
-                            )
+                            processUserMessage("")
 
                             return@launch
+
+
                         }
 
 
                         DeepPhase.THERAPY_EXERCISES -> {
 
-                            // If exercises were already shown, do NOT regenerate them
-                            if (deepManager.exercisesDelivered()) {
-                                Log.d("THERAPY_EXERCISES", "Exercises already delivered — skipping generation.")
-                                return@launch
-                            }
+                            // ---------------------------------------------------------
+                            // THERAPY_EXERCISES is handled by processUserMessage()
+                            // before intent classification.
+                            //
+                            // Exercise generation is system-driven and occurs when
+                            // the phase is entered. User messages are handled separately
+                            // by the THERAPY_EXERCISES selection logic.
+                            // ---------------------------------------------------------
 
-                            isUserInputLocked = true
-
-                            val disorder = lastDiagnosis ?: "general_distress"
-                            val therapyType = deepManager.therapyType ?: "general"
-
-                            Log.d("THERAPY_EXERCISES", "Starting exercise generation. disorder=$disorder, therapyType=$therapyType")
-
-                            // Generate exercises (generator caches full objects on deepManager.generatedDbtExercises)
-                            val exerciseNames = withContext(Dispatchers.IO) {
-                                MultiTherapyExerciseGenerator().generateExercises(
-                                    therapyType = therapyType,
-                                    disorder = disorder,
-                                    symptoms = symptomEngine.getSymptoms(),
-                                    userMessage = "",
-                                    treatmentPattern = deepManager.getTreatmentPattern(
-                                        disorder,
-                                        symptomEngine.getSymptoms(),
-                                        5f, 5f, 5f, 5f, 5f, 80f,
-                                        "neutral"
-                                    ),
-                                    client = client,
-                                    dynamicGenerator = { prompt: String ->
-                                        val response = client.chatCompletion(
-                                            ChatCompletionRequest(
-                                                model = ModelId("gpt-4o-mini"),
-                                                messages = listOf(ChatMessage(ChatRole.User, prompt))
-                                            )
-                                        )
-                                        response.choices.first().message?.content ?: ""
-                                    },
-                                    deepManager = deepManager,
-                                    context = this@ChatActivity
-                                )
-                            }
-
-                            Log.d("THERAPY_EXERCISES", "Generated exercise names: ${exerciseNames.joinToString()}")
-
-                            // Ensure the canonical full-object store exists and log it
-                            val cachedFull = deepManager.generatedDbtExercises
-                            if (cachedFull == null || cachedFull.isEmpty()) {
-                                Log.w("THERAPY_EXERCISES", "Warning: generator did not cache full exercise objects. Names only: ${exerciseNames.joinToString()}")
-                                // As a defensive fallback, convert names -> minimal DbtExercise objects and cache them
-                                val fallbackExercises = exerciseNames.map { name ->
-                                    DbtExercise(
-                                        name = name,
-                                        description = name, // minimal placeholder
-                                        url = "https://example.com/exercises/${normalizeName(name).replace(" ", "-").lowercase()}",
-                                        steps = listOf("Step 1 for $name")
-                                    )
-                                }
-                                deepManager.generatedDbtExercises = fallbackExercises
-                                Log.d("THERAPY_EXERCISES", "Cached fallback full exercises: ${fallbackExercises.map { it.name }}")
-                            } else {
-                                Log.d("THERAPY_EXERCISES", "Cached full exercises: ${cachedFull.map { it.name }}")
-                            }
-
-                            // Store names for UI if you keep that separate (optional). Do NOT overwrite the full-object store.
-                            if (exerciseNames.isNotEmpty()) {
-                                try {
-                                    deepManager.setGeneratedExercises(exerciseNames) // optional: keep for UI
-                                    deepManager.setExercisesDelivered()
-                                    Log.d("THERAPY_EXERCISES", "Exercises delivered flag set")
-                                } catch (e: Exception) {
-                                    Log.w("THERAPY_EXERCISES", "setGeneratedExercises failed: ${e.message}")
-                                    // still mark delivered if full objects exist
-                                    deepManager.setExercisesDelivered()
-                                }
-                            } else {
-                                Log.e("THERAPY_EXERCISES", "❌ No exercises generated — cannot continue.")
-                            }
-
-                            isUserInputLocked = false
-
-                            // Send NAMES ONLY to UI
-                            Log.d("THERAPY_EXERCISES", "Sending exercise names to UI: ${exerciseNames.joinToString()}")
-                            sendToAI(
-                                userMessage = userMessage,
-                                emotion = "not_applicable",
-                                disorder = disorder,
-                                phase = "THERAPY_EXERCISES",
-                                exercises = exerciseNames
+                            Log.d(
+                                "THERAPY_EXERCISES",
+                                "Phase reached — exercise generation is handled by processUserMessage()"
                             )
 
                             return@launch
                         }
-
 
 
                         DeepPhase.EXERCISE_GUIDANCE -> {
 
                             // Guard: exercises must have been delivered
                             if (!deepManager.exercisesDelivered()) {
-                                Log.e("EXERCISE_FLOW", "❌ exercisesDelivered=false — cannot enter EXERCISE_GUIDANCE")
+                                Log.e(
+                                    "EXERCISE_FLOW",
+                                    "❌ exercisesDelivered=false — cannot enter EXERCISE_GUIDANCE"
+                                )
                                 return@launch
                             }
 
-                            // ⭐ NEW: Guard against missing exercise context
+                            // Guard: missing exercise context
                             if (deepManager.currentExerciseName.isNullOrBlank()) {
-                                Log.e("EXERCISE_FLOW", "❌ currentExerciseName is NULL — exercise was never started!")
+                                Log.e(
+                                    "EXERCISE_FLOW",
+                                    "❌ currentExerciseName is NULL — exercise was never started!"
+                                )
                                 return@launch
                             }
 
                             if (deepManager.currentExerciseSteps.isEmpty()) {
-                                Log.e("EXERCISE_FLOW", "❌ currentExerciseSteps is EMPTY — steps were never loaded!")
+                                Log.e(
+                                    "EXERCISE_FLOW",
+                                    "❌ currentExerciseSteps is EMPTY — steps were never loaded!"
+                                )
                                 return@launch
                             }
 
-                            // ⭐ LOG: User replied — check current step BEFORE anything else
+                            // LOG: User replied — check current step
                             Log.d(
                                 "EXERCISE_FLOW",
                                 "User replied. currentExerciseName=${deepManager.currentExerciseName}, " +
@@ -1930,107 +2368,239 @@ REQUIREMENTS
                                         "stepsSize=${deepManager.currentExerciseSteps.size}"
                             )
 
-                            // User ends the exercise manually
+                            // -----------------------------------------------------
+                            // USER ENDS THE EXERCISE MANUALLY
+                            // -----------------------------------------------------
                             if (intent == "FINISHED_EXERCISES" || intent == "NO_TO_EXERCISES") {
-                                Log.d("EXERCISE_FLOW", "User ended exercise manually.")
+
+                                Log.d(
+                                    "EXERCISE_FLOW",
+                                    "User ended exercise manually."
+                                )
+
                                 deepManager.endExercise()
+
                                 return@launch
                             }
 
-                            // Pull current exercise context
+                            // -----------------------------------------------------
+                            // PULL CURRENT EXERCISE CONTEXT
+                            // -----------------------------------------------------
                             val exerciseName = deepManager.currentExerciseName
                             val steps = deepManager.currentExerciseSteps
                             val stepIndex = deepManager.currentExerciseStep
                             val disorder = lastDiagnosis ?: "general_distress"
                             val symptoms = symptomEngine.getSymptoms()
 
-                            // ⭐ NEW: Log full exercise context
+                            // LOG: Full exercise context
                             Log.d(
                                 "EXERCISE_FLOW",
-                                "Exercise context: name=$exerciseName, steps=${steps.joinToString()}, stepIndex=$stepIndex"
+                                "Exercise context: name=$exerciseName, " +
+                                        "steps=${steps.joinToString()}, " +
+                                        "stepIndex=$stepIndex"
                             )
 
-                            // ⭐ LOG: Before completion check
+                            // -----------------------------------------------------
+                            // COMPLETION CHECK
+                            //
+                            // currentExerciseStep represents the step the user has
+                            // JUST responded to.
+                            //
+                            // isExerciseComplete() returns true when the current step
+                            // is the final step.
+                            // -----------------------------------------------------
+                            val isComplete = deepManager.isExerciseComplete()
+
                             Log.d(
                                 "EXERCISE_FLOW",
-                                "Before completion check: stepIndex=$stepIndex, totalSteps=${steps.size}"
+                                "Completion check via isExerciseComplete(): " +
+                                        "stepIndex=$stepIndex, " +
+                                        "lastIndex=${steps.lastIndex}, " +
+                                        "totalSteps=${steps.size}, " +
+                                        "isComplete=$isComplete"
                             )
 
-                            // ⭐ Completion check BEFORE generating next step
-                            if (stepIndex >= steps.size - 1) {
+                            // -----------------------------------------------------
+                            // FINAL STEP → CLOSE EXERCISE
+                            // -----------------------------------------------------
+                            if (isComplete) {
 
-                                Log.d("EXERCISE_FLOW", "Final step reached at stepIndex=$stepIndex. Closing exercise immediately.")
+                                Log.d(
+                                    "EXERCISE_FLOW",
+                                    "Final step reached at stepIndex=$stepIndex. " +
+                                            "User has responded to final step → closing exercise."
+                                )
 
                                 val closure = withContext(Dispatchers.IO) {
                                     try {
+
+                                        Log.d(
+                                            "EXERCISE_FLOW",
+                                            "Generating exercise closure for exercise=$exerciseName"
+                                        )
+
                                         deepManager.generateExerciseClosure(
                                             exerciseName = exerciseName,
                                             disorder = disorder,
                                             symptoms = symptoms,
                                             client = client
                                         )
+
                                     } catch (e: Exception) {
+
+                                        Log.e(
+                                            "EXERCISE_FLOW",
+                                            "Error generating exercise closure",
+                                            e
+                                        )
+
                                         "Great work. Let's pause here — you've completed the exercise."
                                     }
                                 }
 
+                                Log.d(
+                                    "EXERCISE_FLOW",
+                                    "Exercise closure generated. Ending exercise."
+                                )
+
+                                // endExercise():
+                                // - clears current exercise state
+                                // - sets waitingForAnotherExercise = true
+                                // - returns phase to THERAPY_EXERCISES
                                 deepManager.endExercise()
-                                Log.d("EXERCISE_FLOW", "Exercise ended. Sending closure message.")
-                                addMessage(closure, false)
+
+                                Log.d(
+                                    "EXERCISE_FLOW",
+                                    "Exercise ended. " +
+                                            "phase=${deepManager.phase}, " +
+                                            "waitingForAnotherExercise=${deepManager.waitingForAnotherExercise}"
+                                )
+
+                                // Send closure message
+                                addMessage(
+                                    closure,
+                                    false
+                                )
+
+                                // Ask what the user wants to do next
+                                Log.d(
+                                    "EXERCISE_FLOW",
+                                    "Prompting user for next action " +
+                                            "(another exercise or finish)."
+                                )
+
+                                addMessage(
+                                    "Would you like to try another exercise, or finish the session?",
+                                    false
+                                )
+
                                 return@launch
                             }
 
-                            // ⭐ LOG: Before generating next step
+                            // -----------------------------------------------------
+                            // NOT FINAL → ADVANCE TO NEXT STEP
+                            // -----------------------------------------------------
+
                             Log.d(
                                 "EXERCISE_FLOW",
-                                "Generating next step using stepIndex=$stepIndex for exercise=$exerciseName"
+                                "Current step $stepIndex is not final. " +
+                                        "Advancing to next step."
                             )
 
-                            // ⭐ Generate next step using step-aware engine
+                            val advanced = deepManager.advanceExerciseStep()
+
+                            if (!advanced) {
+
+                                Log.e(
+                                    "EXERCISE_FLOW",
+                                    "❌ Failed to advance exercise step. " +
+                                            "currentStep=${deepManager.currentExerciseStep}"
+                                )
+
+                                return@launch
+                            }
+
+                            val nextStepIndex = deepManager.currentExerciseStep
+
+                            Log.d(
+                                "EXERCISE_FLOW",
+                                "Step advanced successfully. " +
+                                        "oldStepIndex=$stepIndex, " +
+                                        "newStepIndex=$nextStepIndex"
+                            )
+
+                            // -----------------------------------------------------
+                            // GENERATE NEXT STEP
+                            // -----------------------------------------------------
+
+                            Log.d(
+                                "EXERCISE_FLOW",
+                                "Generating next step using " +
+                                        "stepIndex=$nextStepIndex for exercise=$exerciseName"
+                            )
+
                             val nextStep = withContext(Dispatchers.IO) {
                                 try {
+
                                     deepManager.generateExerciseStep(
                                         exerciseName = exerciseName,
                                         userInput = userMessage,
                                         disorder = disorder,
                                         symptoms = symptoms,
                                         steps = steps,
-                                        stepIndex = stepIndex,
+                                        stepIndex = nextStepIndex,
                                         client = client
                                     )
+
                                 } catch (e: Exception) {
+
+                                    Log.e(
+                                        "EXERCISE_FLOW",
+                                        "Error generating next step",
+                                        e
+                                    )
+
                                     "Let's continue — tell me one more thing you're noticing."
                                 }
                             }
 
-                            // ⭐ LOG: After generating next step
+                            // LOG: After generating next step
                             Log.d(
                                 "EXERCISE_FLOW",
-                                "Generated next step. stepIndex=$stepIndex, nextStepPreview=${nextStep.take(60)}"
-                            )
-
-                            // ⭐ Increment step counter AFTER generating the step
-                            deepManager.advanceExerciseStep()
-
-                            // ⭐ LOG: After advancing step counter
-                            Log.d(
-                                "EXERCISE_FLOW",
-                                "Step advanced. newStepIndex=${deepManager.currentExerciseStep}"
+                                "Generated next step. " +
+                                        "stepIndex=$nextStepIndex, " +
+                                        "nextStepPreview=${nextStep.take(60)}"
                             )
 
                             // Send next step to UI
-                            Log.d("EXERCISE_FLOW", "Sending next step to UI.")
-                            addMessage(nextStep, false)
+                            Log.d(
+                                "EXERCISE_FLOW",
+                                "Sending next step to UI."
+                            )
+
+                            addMessage(
+                                nextStep,
+                                false
+                            )
+
                             return@launch
                         }
-
-
 
                         // ⭐ NEW FINAL PHASE — show mood AFTER session is complete
                         DeepPhase.SESSION_COMPLETE -> {
                             return@launch
                         }
                     }
+
+                    // ⭐ FINAL FALLBACK — correct location
+                    Log.w("DeepSession", "⚠️ No phase matched this message. Triggering fallback neutral prompt.")
+
+                    addMessage(
+                        "I sense you might be feeling a bit neutral or uncertain. How would you describe your emotion right now?",
+                        isUser = false
+                    )
+
+                    return@launch
 
                 } catch (e: Exception) {
                     Log.e("DeepSession", "Error in deep session block", e)
@@ -2162,12 +2732,21 @@ Interpretation notes:
 HEALTH PROFILE (internal only):
 
 Medical conditions:
-${if (deepManager.medicalConditions.isEmpty()) "- None reported" else deepManager.medicalConditions.joinToString("\n- ", prefix = "- ")}
+${
+            if (deepManager.medicalConditions.isEmpty()) "- None reported" else deepManager.medicalConditions.joinToString(
+                "\n- ",
+                prefix = "- "
+            )
+        }
 
 Demographics:
 - Full‑time student: ${deepManager.fullTimeStatus}
 - International student: ${deepManager.internationalStatus}
-- Ethnicity: ${if (deepManager.ethnicityList.isEmpty()) "Not specified" else deepManager.ethnicityList.joinToString(", ")}
+- Ethnicity: ${
+            if (deepManager.ethnicityList.isEmpty()) "Not specified" else deepManager.ethnicityList.joinToString(
+                ", "
+            )
+        }
 
 Interpretation notes:
 - Student status may influence stress, sleep, concentration, and anxiety.
@@ -2222,35 +2801,40 @@ TASK:
             exercises = emptyList(),
             cluster = null,
             focus = null,
-            methods = null
-        )
+            methods = null,
+            onDelivered = {
+                Log.e("DiagnosisDebug", "Diagnosis delivered")
 
-        // -----------------------------------------------------
-        // 8. Mark diagnosis delivered
-        // -----------------------------------------------------
-        deepManager.setDiagnosisDelivered()
+                deepManager.setDiagnosisDelivered()
+                deepManager.advancePhaseIfNeeded()
+
+                Log.e(
+                    "PHASE_TRACE",
+                    "Diagnosis complete → phase=${deepManager.phase}"
+                )
+
+                processUserMessage("")
+            }
+        )
     }
 
 
 
-
-
-
-
-
-    // ---------------------------------------------------------
+        // ---------------------------------------------------------
     // OPENAI CALL
     // ---------------------------------------------------------
-    private fun sendToAI(
-        userMessage: String,
-        emotion: String,
-        disorder: String,
-        phase: String,
-        exercises: List<String> = emptyList(),
-        cluster: String? = null,
-        focus: String? = null,
-        methods: List<String>? = null
-    )
+        private fun sendToAI(
+            userMessage: String,
+            emotion: String,
+            disorder: String,
+            phase: String,
+            exercises: List<String> = emptyList(),
+            cluster: String? = null,
+            focus: String? = null,
+            methods: List<String>? = null,
+            onDelivered: (() -> Unit)? = null
+        )
+
     {
 
         val isQuick = (sessionMode == "quick")
@@ -2488,14 +3072,39 @@ PHASE BEHAVIOR
 - No questions
 
 ▶ THERAPY_TYPE
-- Briefly explain why the chosen therapy type fits the pattern
-- Keep it simple and supportive
-- No questions
+
+This is an INTERNAL/BACKGROUND phase.
+Do NOT generate a user-facing response.
+Do NOT explain or mention the selected therapy type to the user.
+Do NOT describe why the therapy type was selected.
+Do NOT ask the user any questions.
+Do NOT generate exercises.
+Do NOT acknowledge that therapy type selection is taking place.
+The external system handles therapy type selection, storage, and progression.
+Remain silent while this phase is processed in the background.
 
 ▶ THERAPY_EXERCISES
-- Provide 2–3 personalised exercises aligned with the chosen therapy type
-- Keep explanations short unless the user asks for more detail
-- One question allowed at the end
+
+This phase is controlled by the application.
+The application determines which exercise or exercises are presented to the user.
+The exercise list is NOT generated or selected by the AI.
+
+Rules:
+- Do NOT generate, invent, or independently select exercises.
+- Treat the exercises provided by the application as the only valid exercises.
+- If ONE exercise is provided, discuss ONLY that exercise.
+- Do NOT introduce, suggest, or add other exercises unless the application explicitly provides them.
+- Do NOT replace, modify, or contradict the exercise information provided by the application.
+- Keep exercise descriptions concise, clear, and easy to understand.
+- If exercise steps are provided by the application, summarise or explain them without changing their intended meaning.
+- Do NOT repeat the exercise list unless the application provides it again or the user explicitly asks to see it.
+- If the user selects or agrees to an exercise, respond naturally and supportively.
+- The external system handles exercise selection, initialization, step generation, completion, and progression.
+- Do NOT attempt to control, advance, or change the exercise phase.
+- Do NOT decide when an exercise is complete.
+- Keep responses concise and supportive.
+- One question is allowed when appropriate.
+
 
 ────────────────────────────────────────
 IMPORTANT PRINCIPLE
@@ -2587,9 +3196,15 @@ You only adapt tone and content to the current phase.
 
                 withContext(Dispatchers.Main) {
                     Log.e("AI_DEBUG", "Posting AI reply to UI")
+
                     addMessage(aiReply, isUser = false)
+
                     isFirstAiResponse = false
                     sessionJustLoaded = false
+
+                    // Notify caller only after the AI response has actually
+                    // been successfully added to the conversation.
+                    onDelivered?.invoke()
                 }
 
             } catch (e: Exception) {
@@ -2605,10 +3220,6 @@ You only adapt tone and content to the current phase.
             }
         }
     }
-
-
-
-
 
 
 
@@ -2873,98 +3484,76 @@ You only adapt tone and content to the current phase.
 
 
 
-    suspend fun classifyIntent(userMessage: String): String {
+    suspend fun classifyIntent(userMessage: String, phase: DeepPhase): String {
 
+        // ⭐ HARD OVERRIDE FOR EXERCISE GUIDANCE ⭐
+        if (phase == DeepPhase.EXERCISE_GUIDANCE) {
+            val lower = userMessage.lowercase()
+
+            if (
+                lower.contains("stop") ||
+                lower.contains("done") ||
+                lower.contains("finished") ||
+                lower.contains("end") ||
+                lower.contains("that's enough") ||
+                lower.contains("end this")
+            ) {
+                return "FINISHED_EXERCISES"
+            }
+
+            return "EXERCISE_STEP"
+        }
+
+        // ⭐ NORMAL CLASSIFIER LOGIC BELOW ⭐
         val prompt = """
 Classify the user's message into one category. Follow these rules carefully.
 
-PHASE A — Questionnaire
------------------------
+CURRENT PHASE: $phase
+
+────────────────────────────────────────
+PHASE: QUESTIONNAIRE
+────────────────────────────────────────
 1. SYMPTOM_DESCRIPTION — describing feelings, emotions, problems, or difficulties.
 
-2. YES_TO_QUESTIONNAIRE — agreeing to complete a questionnaire 
+2. YES_TO_QUESTIONNAIRE — agreeing to complete a questionnaire
    (yes, sure, let's do it).
 
-3. NO_TO_QUESTIONNAIRE — declining 
+3. NO_TO_QUESTIONNAIRE — declining
    (no, not now, maybe later).
 
+────────────────────────────────────────
+PHASE: EXERCISE_SELECTION
+────────────────────────────────────────
+4. SELECT_EXERCISE — the user chooses a specific exercise.
+   - If the user message EXACTLY matches one of the exercise names shown earlier,
+     classify as SELECT_EXERCISE.
+   - If the user message CONTAINS an exercise name,
+     classify as SELECT_EXERCISE.
 
-PHASE B — Exercise Consent
---------------------------
-4. YES_TO_EXERCISES — explicitly agreeing to try therapy exercises 
-   (yes, sure, let's do it, sounds good, go ahead, please).
-   *Do NOT classify "ok" or "okay" as YES_TO_EXERCISES.*
+────────────────────────────────────────
+PHASE: EXERCISE_FLOW
+────────────────────────────────────────
+5. EXERCISE_STEP — the user is actively participating in an exercise.
 
-5. NO_TO_EXERCISES — declining therapy exercises 
-   (no, not now, maybe later, don't want to, not today).
+────────────────────────────────────────
+PHASE: EXERCISE_COMPLETION
+────────────────────────────────────────
+6. FINISHED_EXERCISES — the user indicates they have completed the exercise.
 
+────────────────────────────────────────
+PHASE: SESSION_ENDING
+────────────────────────────────────────
+7. END_SESSION — the user wants to end the entire conversation.
 
-PHASE C — Exercise Selection
-----------------------------
-6. SELECT_EXERCISE — the user chooses a specific exercise.
-   This includes ANY message that mentions:
-   - the name of an exercise (self‑soothe, wise mind, grounding, check the facts)
-   - a numbered exercise (exercise 1, exercise 2, the first one)
-   - a description of an exercise (the breathing one, the grounding one)
-   - a desire to try a specific exercise (“I want to do the soothing exercise”)
+────────────────────────────────────────
+PHASE: NEUTRAL
+────────────────────────────────────────
+8. ACKNOWLEDGEMENT — neutral confirmation.
 
-   SELECT_EXERCISE takes priority over YES_TO_EXERCISES.
-
-
-PHASE D — Exercise Flow
------------------------
-7. EXERCISE_STEP — the user is actively participating in an exercise.
-   This includes ANY message where the user:
-   - follows instructions from the exercise
-   - describes sensory details
-   - reflects on feelings as part of the exercise
-   - writes a sentence requested by the exercise
-
-   EXERCISE_STEP takes priority over SYMPTOM_DESCRIPTION and ACKNOWLEDGEMENT 
-   **only when the user is already inside an exercise**.
-
-
-PHASE E — Exercise Completion
------------------------------
-8. FINISHED_EXERCISES — the user indicates they have completed the exercise.
-   Examples:
-   - “I’m done with this exercise”
-   - “I finished the exercise”
-   - “I completed it”
-   - “That’s all for this exercise”
-   - “I’m finished for today”
-   - “I want to stop the exercise”
-
-   *Do NOT classify these as END_SESSION.*
-
-
-PHASE F — Session Ending
-------------------------
-9. END_SESSION — the user wants to end the entire conversation.
-   Includes:
-   - bye
-   - goodbye
-   - see you
-   - talk later
-   - no thanks bye
-   - end chat
-   - “I want to stop the session”
-   - “I want to end the conversation”
-
-   *Do NOT classify exercise‑related endings as END_SESSION.*
-
-
-PHASE G — Neutral
------------------
-10. ACKNOWLEDGEMENT — neutral confirmation 
-    (ok, okay, alright, I see, got it)
-    *Do NOT classify these as YES_TO_EXERCISES.*
-
-
-PHASE H — Other
----------------
-11. UNRELATED — anything else.
-
+────────────────────────────────────────
+PHASE: OTHER
+────────────────────────────────────────
+9. UNRELATED — anything else.
 
 User message: "$userMessage"
 
@@ -3086,41 +3675,6 @@ I’ll use these to understand what might be going on. Let me know if anything n
         }
 
     }
-
-    fun moodIndexToEmoji(index: Int): String {
-        return when (index) {
-            0 -> "😢"
-            1 -> "😕"
-            2 -> "😐"
-            3 -> "🙂"
-            4 -> "😄"
-            else -> "🙂"
-        }
-    }
-
-
-    private fun sentimentToEmoji(score: Float): String {
-        return when {
-            score <= -0.6f -> "😢"
-            score <= -0.2f -> "😕"
-            score <= 0.2f -> "😐"
-            score <= 0.6f -> "🙂"
-            else -> "😄"
-        }
-    }
-
-    private fun emojiToMoodIndex(emoji: String): Int {
-        return when (emoji) {
-            "😢" -> 0
-            "😕" -> 1
-            "😐" -> 2
-            "🙂" -> 3
-            "😄" -> 4
-            else -> 2
-        }
-    }
-
-
 
 
 

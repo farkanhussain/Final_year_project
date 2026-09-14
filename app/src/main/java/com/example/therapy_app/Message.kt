@@ -9,10 +9,6 @@ data class Message(
 
 enum class MessageType {
     NORMAL,
-    MOOD_CONFIRMATION,
-
-    MOOD_SELECTOR,
-
     SUMMARY
 
 }
