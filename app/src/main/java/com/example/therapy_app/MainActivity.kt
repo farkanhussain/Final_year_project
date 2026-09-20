@@ -143,14 +143,38 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, MoodTrackingActivity::class.java))
         }
 
-        findViewById<View>(R.id.cardRecommendedExercises).setOnClickListener {
-            val intent = Intent(this, ChatActivity::class.java)
-            intent.putStringArrayListExtra("recommended_exercises", ArrayList(latestExercises))
-            // Pass full DBT objects
-            intent.putExtra("dbt_exercises_json", DbtExercise.toJsonList(tempDeepManager.generatedDbtExercises))
+        val card = findViewById<View>(R.id.cardRecommendedExercises)
+
+        card.setOnClickListener {
+            Log.d("DBT_DEBUG", "CardClick: latestExercises = $latestExercises")
+            Log.d("DBT_DEBUG", "CardClick: generatedDbtExercises = ${tempDeepManager.generatedDbtExercises}")
+            Log.d("DBT_DEBUG", "CardClick: generatedDbtExercises count = ${tempDeepManager.generatedDbtExercises?.size}")
+
+
+            if (latestExercises.isEmpty() || tempDeepManager.generatedDbtExercises.isNullOrEmpty()) {
+                Toast.makeText(this, "No exercises available yet", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val intent = Intent(this@MainActivity, ChatActivity::class.java)
+
+            intent.putStringArrayListExtra(
+                "recommended_exercises",
+                ArrayList(latestExercises)
+            )
+
+            intent.putExtra(
+                "dbt_exercises_json",
+                DbtExercise.toJsonList(tempDeepManager.generatedDbtExercises)
+            )
+
             intent.putExtra("from_exercises_card", true)
 
+            startActivity(intent)
         }
+
+
+
     }
 
 
@@ -419,7 +443,6 @@ $sessionText
 
         container.removeAllViews()
 
-        // 1️⃣ Fetch recent sessions (same as insights)
         FirebaseFirestore.getInstance()
             .collection("users")
             .document(userId)
@@ -436,8 +459,18 @@ $sessionText
                     return@addOnSuccessListener
                 }
 
-                // 2️⃣ Extract text from sessions (same as insights)
+                // ⭐ Extract symptomsVector + session text
+                var latestSymptoms: FloatArray = floatArrayOf()
+
                 val sessionText = sessions.joinToString("\n") { doc ->
+
+                    // ⭐ Read symptomsVector directly from session
+                    val rawVector = doc.get("symptomsVector") as? List<Double>
+                    if (rawVector != null) {
+                        latestSymptoms = rawVector.map { it.toFloat() }.toFloatArray()
+                    }
+
+                    // ⭐ Build session text for prompt
                     val messages = doc.get("messages") as? List<Map<String, Any>> ?: emptyList()
                     messages.joinToString("\n") { msg ->
                         val text = msg["text"] as? String ?: ""
@@ -448,117 +481,65 @@ $sessionText
                     }
                 }
 
+                // ⭐ Convert symptoms → binary flags for DBT selector
+                val binarySymptoms =
+                    latestSymptoms.map { if (it > 0.3f) 1f else 0f }.toFloatArray()
+
                 CoroutineScope(Dispatchers.IO).launch {
 
                     val client = OpenAI(token = openAiKey)
 
-
-
-                    val exercises = generator.generateExercises(
-                        therapyType = "DBT",
-                        disorder = "unknown",
-                        symptoms = floatArrayOf(),
-                        userMessage = sessionText,
-                        treatmentPattern = TreatmentPattern.empty(),
-                        client = client,
-                        dynamicGenerator = { "" },
-                        deepManager = tempDeepManager,
-                        context = this@MainActivity
-                    )
+                    val exercises = try {
+                        generator.generateExercises(
+                            therapyType = "DBT",
+                            disorder = "unknown",
+                            symptoms = binarySymptoms,   // ⭐ personalised symptoms
+                            userMessage = sessionText,
+                            treatmentPattern = TreatmentPattern.empty(),
+                            client = client,
+                            dynamicGenerator = { "" },
+                            deepManager = tempDeepManager,
+                            context = this@MainActivity
+                        )
+                    } catch (e: Exception) {
+                        emptyList<String>()
+                    }
 
                     withContext(Dispatchers.Main) {
+                        Log.d("DBT_DEBUG", "Homepage: DBT names returned = $exercises")
+                        Log.d("DBT_DEBUG", "Homepage: Full DBT objects = ${tempDeepManager.generatedDbtExercises}")
+                        Log.d("DBT_DEBUG", "Homepage: Full DBT object count = ${tempDeepManager.generatedDbtExercises?.size}")
+
+                        val dbt = tempDeepManager.generatedDbtExercises
+
+                        if (exercises.isEmpty() || dbt.isNullOrEmpty()) {
+                            showFallbackExercises(container)
+                            return@withContext
+                        }
+
                         latestExercises = exercises
                         container.removeAllViews()
+
                         exercises.forEach { ex ->
                             container.addView(createExerciseView(ex))
                         }
-
-                        // Send full DBT objects to ChatActivity
-                        findViewById<View>(R.id.cardRecommendedExercises).setOnClickListener {
-                            val intent = Intent(this@MainActivity, ChatActivity::class.java)
-
-                            intent.putStringArrayListExtra("recommended_exercises", ArrayList(latestExercises))
-
-                            intent.putExtra(
-                                "dbt_exercises_json",
-                                DbtExercise.toJsonList(tempDeepManager.generatedDbtExercises)
-                            )
-
-                            intent.putExtra("from_exercises_card", true)
-                            startActivity(intent)
-                        }
                     }
                 }
-
-
             }
             .addOnFailureListener {
                 showFallbackExercises(container)
             }
     }
 
-    private fun callOpenAIExercises(
-        sessionText: String,
-        callback: (List<String>) -> Unit
-    ) {
-        val client = OpenAI(token = openAiKey)
 
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val response = client.chatCompletion(
-                    ChatCompletionRequest(
-                        model = ModelId("gpt-4o-mini"),
-                        messages = listOf(
-                            ChatMessage(
-                                role = ChatRole.System,
-                                content = """
-You are a therapeutic exercise recommender.
-Generate exactly 3 short CBT-style exercises.
-Each exercise must be actionable, simple, and 8–12 words.
-No numbering. No long sentences.
-""".trimIndent()
-                            ),
-                            ChatMessage(
-                                role = ChatRole.User,
-                                content = """
-SESSION NOTES:
-$sessionText
-""".trimIndent()
-                            )
-                        ),
-                        temperature = 0.7
-                    )
-                )
 
-                val raw = response.choices.first().message?.content ?: ""
-
-                val exercises = raw.lines()
-                    .map { it.trim().removePrefix("- ").removePrefix("• ") }
-                    .filter { it.isNotBlank() }
-                    .take(3)
-
-                withContext(Dispatchers.Main) { callback(exercises) }
-
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    callback(
-                        listOf(
-                            "Try a 1‑minute grounding exercise.",
-                            "Write down one recurring thought today.",
-                            "Do a short slow‑breathing routine."
-                        )
-                    )
-                }
-            }
-        }
-    }
 
     private fun showFallbackExercises(container: LinearLayout) {
+        Log.e("DBT_DEBUG", "FALLBACK TRIGGERED — DBT exercises missing")
 
         val fallback = listOf(
-            "Try a 1‑minute grounding exercise.",
-            "Write down one recurring thought today.",
-            "Do a short slow‑breathing routine."
+            "No recommended exercises available yet.",
+            "Complete a therapy session to unlock personalised DBT exercises."
         )
 
         latestExercises = fallback
@@ -568,6 +549,7 @@ $sessionText
             container.addView(createExerciseView(ex))
         }
     }
+
 
 
 
@@ -581,28 +563,15 @@ $sessionText
     }
 
 
-    private fun refreshExercisesFromCache() {
-        val container = findViewById<LinearLayout>(R.id.homeRecommendedExercisesContainer)
 
-        // If no cache exists, fall back to full load
-        val cached = TherapyCache.cachedTherapistMessages ?: return loadRecommendedExercises()
-
-        val combined = cached.joinToString("\n")
-
-        callOpenAIExercises(combined) { exercises ->
-            latestExercises = exercises
-            container.removeAllViews()
-            exercises.forEach { ex ->
-                container.addView(createExerciseView(ex))
-            }
-        }
-    }
 
 
     override fun onResume() {
         super.onResume()
-        refreshExercisesFromCache()   // 🔥 Regenerate insights using cached messages
+
+
     }
+
 
     private fun showMoodCheckPopup() {
 

@@ -180,6 +180,7 @@ class ChatActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+
         Log.w("LifecycleCheck", "🔥 onCreate() fired in ${this::class.java.simpleName}")
         Log.w("LifecycleCheck", "🔥 Activity instance hash = ${this.hashCode()}")
 
@@ -189,32 +190,7 @@ class ChatActivity : AppCompatActivity() {
             Log.w("LifecycleCheck", "🔥 deepManager not accessible yet (${e.message})")
         }
 
-        Log.d("OPENAI", "Key length = ${openAiKey.length}")
-
-        client = OpenAI(
-            token = openAiKey
-        )
-
-        onnxRunner = OnnxModelRunner(this)
-
-
-        window.setDecorFitsSystemWindows(true)
         setContentView(R.layout.activity_chat)
-
-        openedFromInsightsCard = intent.getBooleanExtra("from_exercises_card", false)
-        if (openedFromInsightsCard) {
-            isFirstAiResponse = false
-        }
-
-
-
-
-
-
-
-        sessionId = intent.getStringExtra("SESSION_ID")
-
-        modelRunner = OnnxModelRunner(this)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar_chat)
         val languageSelector = findViewById<LinearLayout>(R.id.languageSelector)
@@ -236,17 +212,61 @@ class ChatActivity : AppCompatActivity() {
         emergencyButton = findViewById(R.id.emergencyButton)
         emergencyOverlay = findViewById(R.id.emergencyOverlay)
 
-
-
-
-
-
-
-
-
         messageInput.isEnabled = false
         sendButton.isEnabled = false
         voiceButton.isEnabled = false
+
+        Log.d("OPENAI", "Key length = ${openAiKey.length}")
+
+        client = OpenAI(
+            token = openAiKey
+        )
+        onnxRunner = OnnxModelRunner(this)
+        // =====================================================
+        // RESET SYMPTOM ENGINE
+        // =====================================================
+        symptomEngine = SymptomCollectionEngine(featureIndexMap, featureCols)
+        Log.d("DeepButton", "Symptom engine reset | symptomEngineHash=${symptomEngine.hashCode()}")
+
+
+        window.setDecorFitsSystemWindows(true)
+
+
+
+
+
+
+
+
+        openedFromInsightsCard = intent.getBooleanExtra("from_exercises_card", false)
+        sessionId = intent.getStringExtra("SESSION_ID")
+        if (openedFromInsightsCard) {
+
+            // Skip intake, questionnaire, diagnosis
+            deepManager = DeepSessionManager()
+            deepManager.phase = DeepPhase.THERAPY_EXERCISES
+
+            isFirstAiResponse = false
+            sessionMode = "deep"
+
+            // Hide language + session selectors
+            languageSelector.visibility = View.GONE
+            sessionSelector.visibility = View.GONE
+            findViewById<TextView>(R.id.sessionIntroText).visibility = View.GONE
+
+            // Disable buttons so user cannot switch modes
+            btnEnglish.isEnabled = false
+            btnUrdu.isEnabled = false
+            btnQuick.isEnabled = false
+            btnDeep.isEnabled = false
+
+            // Show chat UI
+            inputBar.visibility = View.VISIBLE
+            recyclerView.visibility = View.VISIBLE
+
+            enableChatInput()
+        }
+
 
         btnEnglish.setOnClickListener {
             selectedLanguage = "en"
@@ -364,11 +384,7 @@ class ChatActivity : AppCompatActivity() {
             // === ESSENTIAL STARTUP LOG (added) ===
             Log.i("DeepButton", "deepManager created | hash=${deepManager.hashCode()} | phase=${deepManager.phase}")
 
-            // =====================================================
-            // RESET SYMPTOM ENGINE
-            // =====================================================
-            symptomEngine = SymptomCollectionEngine(featureIndexMap, featureCols)
-            Log.d("DeepButton", "Symptom engine reset | symptomEngineHash=${symptomEngine.hashCode()}")
+
 
             // =====================================================
             // RESET SESSION TRACKING FLAGS
@@ -524,8 +540,6 @@ class ChatActivity : AppCompatActivity() {
             true
         }
 
-
-
         messageInput.setTextColor(ContextCompat.getColor(this, android.R.color.white))
 
         setSupportActionBar(toolbar)
@@ -540,27 +554,37 @@ class ChatActivity : AppCompatActivity() {
         recyclerView.adapter = adapter
 
 
-
-        val incomingExercises = intent.getStringArrayListExtra("recommended_exercises")
-
-        if (incomingExercises != null && incomingExercises.isNotEmpty()) {
-            incomingExercises.forEach { ex ->
-                addMessage("Recommended Exercise: $ex", isUser = false)
-            }
-        }
-
         val dbtJson = intent.getStringExtra("dbt_exercises_json")
         if (dbtJson != null) {
+
             val fullExercises = Gson().fromJson(dbtJson, Array<DbtExercise>::class.java).toList()
 
-            fullExercises.forEach { ex ->
-                addMessage("Steps for ${ex.name}:", isUser = false)
+            deepManager.generatedDbtExercises = fullExercises
 
-                ex.steps.forEach { step ->
-                    addMessage("• $step", isUser = false)
+            fullExercises.forEach { ex ->
+
+                val summary = buildString {
+                    append("Recommended Exercise: ${ex.name}\n\n")
+
+                    if (!ex.description.isNullOrBlank()) {
+                        append("${ex.description}\n\n")
+                    }
+
+                    append("Steps include:\n")
+                    ex.steps.forEach { step ->
+                        append("• $step\n")
+                    }
                 }
+
+                addMessage(summary.trim(), isUser = false)
+            }
+
+            // ⭐ CRITICAL FIX — tell DeepSessionManager that exercises were delivered
+            if (::deepManager.isInitialized) {
+                deepManager.setExercisesDelivered()
             }
         }
+
 
 
 
@@ -1357,6 +1381,16 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                     // -----------------------------------------------------
                     // EXERCISE SELECTION (THERAPY_EXERCISES)
                     // -----------------------------------------------------
+
+                    Log.e(
+                        "DBT_DEBUG",
+                        "generatedDbtExercises = ${
+                            if (deepManager.generatedDbtExercises == null) "NULL"
+                            else if (deepManager.generatedDbtExercises!!.isEmpty()) "EMPTY"
+                            else "COUNT = ${deepManager.generatedDbtExercises!!.size}"
+                        }"
+                    )
+
                     if (deepManager.phase == DeepPhase.THERAPY_EXERCISES &&
                         deepManager.exercisesDelivered() &&
                         (
@@ -2821,6 +2855,11 @@ TASK:
             onDelivered = {
                 Log.e("DiagnosisDebug", "Diagnosis delivered")
 
+                // ⭐ NEW: Store the final diagnosis text
+                val lastAiMessage = messages.lastOrNull { !it.user }?.text ?: ""
+                deepManager.finalDiagnosis = lastAiMessage
+                Log.e("DiagnosisDebug", "Stored finalDiagnosis = ${deepManager.finalDiagnosis}")
+
                 deepManager.setDiagnosisDelivered()
                 deepManager.advancePhaseIfNeeded()
 
@@ -2831,6 +2870,7 @@ TASK:
 
                 processUserMessage("")
             }
+
         )
     }
 
@@ -3309,14 +3349,23 @@ You only adapt tone and content to the current phase.
             return
         }
 
+        // ⭐ Extract clinical data from SymptomCollectionEngine + DeepSessionManager
+        val symptomsVector = symptomEngine.buildModelInputVector().toList()   // ⭐ FULL 65‑dim vector
+        val diagnosis = deepManager.finalDiagnosis ?: ""             // ⭐ AI diagnosis
+        val phq9Score = symptomEngine.computePhq9Score()             // ⭐ PHQ‑9 total
+        val gad7Score = symptomEngine.computeGad7Score()             // ⭐ GAD‑7 total
+
         val session = TherapySession(
             id = sessionId ?: "",
             title = title,
             tags = selectedTags.toList(),
             messages = messages.toList(),
+            symptomsVector = symptomsVector,   // ⭐ NEW
+            diagnosis = diagnosis,             // ⭐ NEW
+            phq9Score = phq9Score,             // ⭐ NEW
+            gad7Score = gad7Score,             // ⭐ NEW
             timestamp = loadedTimestamp ?: System.currentTimeMillis()
         )
-
 
         val ref = db.collection("users")
             .document(user.uid)
@@ -3328,7 +3377,6 @@ You only adapt tone and content to the current phase.
                 .addOnSuccessListener { docRef ->
                     sessionId = docRef.id
 
-                    // 🔥 Invalidate insights cache because new therapist messages were added
                     TherapyCache.cachedTherapistMessages = null
 
                     Toast.makeText(this, "Session saved!", Toast.LENGTH_LONG).show()
@@ -3348,7 +3396,6 @@ You only adapt tone and content to the current phase.
             ref.document(sessionId!!).set(session)
                 .addOnSuccessListener {
 
-                    // 🔥 Invalidate insights cache because session was updated
                     TherapyCache.cachedTherapistMessages = null
 
                     Toast.makeText(this, "Session updated!", Toast.LENGTH_LONG).show()
@@ -3364,6 +3411,8 @@ You only adapt tone and content to the current phase.
                 }
         }
     }
+
+
 
     private fun showQuestionnaire(questionList: List<String>) {
         try {

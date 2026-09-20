@@ -64,6 +64,9 @@ data class ExtendedAssessmentResponse(
 
 class DeepSessionManager {
 
+    var finalDiagnosis: String? = null
+
+
     private val completedExerciseNames = mutableSetOf<String>()
 
     var currentExercise: DbtExercise? = null
@@ -611,7 +614,6 @@ Return ONLY the closing message.
         // ---------------------------------------------------------
         // NORMAL STEP
         // ---------------------------------------------------------
-
         val prompt = """
 You are a warm, evidence-based mental health assistant guiding
 the user through a therapeutic exercise.
@@ -619,35 +621,32 @@ the user through a therapeutic exercise.
 EXERCISE:
 $exerciseName
 
-CURRENT STEP:
+CURRENT STEP (from DBT Self Help website):
 $currentStep
-
-REMAINING STEPS:
-${remainingSteps.joinToString("\n")}
 
 USER INPUT:
 "$userInput"
 
-USER CONTEXT:
-- Disorder: $disorder
-- Symptoms: ${symptoms.joinToString()}
-
 STRICT RULES:
-- Respond ONLY to the CURRENT STEP.
-- Follow the exact exercise sequence.
-- Never repeat a previous step.
-- Never skip a step.
-- Never invent a new step.
-- Never switch exercises.
-- Do NOT decide whether the exercise is complete.
+- Your top priority is to follow the DBT Self Help website step EXACTLY.
+- You may include ONE short acknowledgement of the user's message (e.g., “Thanks for sharing that”).
+- After the acknowledgement, you MUST present the CURRENT STEP exactly as written in the DBT website.
+- Do NOT modify, shorten, expand, reinterpret, or paraphrase the step instructions.
+- Do NOT add reflections, follow-up questions, or additional actions.
+- Do NOT add supportive commentary beyond the single acknowledgement clause.
+- Do NOT describe the step; you must provide the actual instructions.
+- Do NOT invent new DBT content.
+- Do NOT mention remaining steps.
+- Do NOT switch exercises.
 - Do NOT end the exercise early.
-- Keep the response to 1–2 sentences.
-- Personalise the response based on the user's message.
-- Ask for only ONE small reflection or action related to the CURRENT STEP.
-- Do not mention the remaining steps.
+- Keep the response to 1–2 sentences ONLY if the DBT step itself is 1–2 sentences.
+- Otherwise, return the step exactly as written.
 
-Return ONLY the guidance for the CURRENT STEP.
+Return ONLY:
+1. A brief acknowledgement clause (optional).
+2. The exact DBT step instructions, unchanged.
 """.trimIndent()
+
 
         val response = client.chatCompletion(
             ChatCompletionRequest(

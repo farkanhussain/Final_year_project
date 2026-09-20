@@ -35,10 +35,18 @@ class MultiTherapyExerciseGenerator {
 
             "DBT" -> {
                 Log.d("DBT_DEBUG", "➡ DBT ROUTE ACTIVATED")
+
                 val dbtExercises = generateDbtWebsiteExercises(client, symptoms, context)
+
+                // ⭐ LOG POINT 2 — RIGHT HERE
+                Log.d("DBT_DEBUG", "Generator: DBT exercises returned = ${dbtExercises.size}")
+                Log.d("DBT_DEBUG", "Generator: First DBT exercise = ${dbtExercises.firstOrNull()}")
+
                 deepManager.generatedDbtExercises = dbtExercises // ⭐ cache full objects
+
                 return dbtExercises.map { it.name }             // ⭐ return names to UI
             }
+
 
             else -> {
                 Log.d("DBT_DEBUG", "➡ NON-DBT ROUTE: ${therapyType.uppercase()}")
@@ -293,6 +301,9 @@ ${symptoms.joinToString()}
         allExercises.forEach {
             Log.d("DBT_DEBUG", "Exercise: ${it.name}, steps=${it.steps.size}")
         }
+        Log.d("DBT_DEBUG", "Parser: Parsed DBT exercises count = ${allExercises.size}")
+        Log.d("DBT_DEBUG", "Parser: First parsed exercise = ${allExercises.firstOrNull()}")
+
 
 
         // ⭐ Select exercises based on symptoms
@@ -301,6 +312,9 @@ ${symptoms.joinToString()}
             symptoms = symptoms,
             client = client
         )
+        Log.d("DBT_DEBUG", "Selector: Selected DBT exercises count = ${selectedExercises.size}")
+        Log.d("DBT_DEBUG", "Selector: Selected names = ${selectedExercises.map { it.name }}")
+
 
         selectedExercises
     }
