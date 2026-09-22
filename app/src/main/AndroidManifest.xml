@@ -53,6 +53,7 @@
         <activity android:name=".EmailVerificationActivity"/>
         <activity android:name=".MedicalConditionsActivity"/>
         <activity android:name=".DemographicsActivity"/>
+        <activity android:name=".ChatHistoryActivity"/>
 
     </application>
 

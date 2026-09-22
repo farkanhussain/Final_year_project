@@ -180,6 +180,16 @@ class ChatActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        sessionId = intent.getStringExtra("SESSION_ID")
+
+        if (sessionId != null) {
+            // User is trying to open an old session → block continuation
+            Toast.makeText(this, "This session is view‑only.", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+
 
         Log.w("LifecycleCheck", "🔥 onCreate() fired in ${this::class.java.simpleName}")
         Log.w("LifecycleCheck", "🔥 Activity instance hash = ${this.hashCode()}")
@@ -588,9 +598,7 @@ class ChatActivity : AppCompatActivity() {
 
 
 
-        if (sessionId != null) {
-            loadExistingSession()
-        }
+
 
         // Handle physical "Enter" key and keyboard "Send" action
         messageInput.setOnEditorActionListener { _, actionId, event ->
@@ -698,58 +706,6 @@ class ChatActivity : AppCompatActivity() {
         voiceButton.isEnabled = true
     }
 
-
-    private fun loadExistingSession() {
-        val user = auth.currentUser ?: return
-        val id = sessionId ?: return
-
-        db.collection("users")
-            .document(user.uid)
-            .collection("sessions")
-            .document(id)
-            .get()
-            .addOnSuccessListener { doc ->
-
-                val session = doc.toObject(TherapySession::class.java)
-                    ?: return@addOnSuccessListener
-
-                sessionJustLoaded = true
-
-                // ⭐ 1. Clean messages BEFORE adding them to UI
-                val cleaned = session.messages
-                    .filter { it.text != null && it.text.isNotBlank() } // remove null/empty
-                    .filter { msg ->
-                        // remove fallback messages
-                        val fallbackPatterns = listOf(
-                            "connection trouble",
-                            "having some trouble",
-                            "didn’t catch that",
-                            "didn't catch that",
-                            "say that again"
-                        )
-                        fallbackPatterns.none { pattern ->
-                            msg.text!!.contains(pattern, ignoreCase = true)
-                        }
-                    }
-
-                // ⭐ 2. Replace your old logic with cleaned messages
-                messages.clear()
-                messages.addAll(cleaned)
-
-                adapter.notifyDataSetChanged()
-
-                val recyclerView = findViewById<RecyclerView>(R.id.chatRecyclerView)
-                recyclerView.post {
-                    recyclerView.scrollToPosition(messages.size - 1)
-
-                    // ⭐ 3. Add deep session invitation (safe)
-                    addMessage(
-                        "If you'd like to continue this with more depth, I can guide you through a Deep Support Session.",
-                        isUser = false
-                    )
-                }
-            }
-    }
 
 
     // ---------------------------------------------------------

@@ -38,11 +38,13 @@ class ManageSessionBottomSheet(
         super.onViewCreated(view, savedInstanceState)
 
         view.findViewById<TextView>(R.id.optionView).setOnClickListener {
-            val intent = Intent(requireContext(), ChatActivity::class.java)
+            val intent = Intent(requireContext(), ChatHistoryActivity::class.java)
             intent.putExtra("SESSION_ID", sessionId)
             startActivity(intent)
             dismiss()
         }
+
+
 
         view.findViewById<TextView>(R.id.optionManageSessionDetails).setOnClickListener {
             loadSessionAndOpenDialog()

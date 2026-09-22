@@ -557,38 +557,52 @@ class DeepSessionManager {
         // ---------------------------------------------------------
         // FINAL STEP
         // ---------------------------------------------------------
-
         if (isFinalStep) {
 
             val finalPrompt = """
-You are a warm, evidence-based mental health assistant.
-
-The user is completing the final step of this therapeutic exercise.
+You are a warm, evidence-based mental health assistant guiding
+the user through the final step of a therapeutic exercise.
 
 EXERCISE:
 $exerciseName
 
-FINAL STEP:
+FINAL STEP (from DBT Self Help website):
 $currentStep
 
 USER INPUT:
 "$userInput"
 
-USER CONTEXT:
-- Disorder: $disorder
-- Symptoms: ${symptoms.joinToString()}
-
-RULES:
-- Acknowledge the user's effort.
-- Briefly reflect the purpose of the final step.
+STRICT RULES:
+- Begin with ONE personalised acknowledgement based directly on the user's message.
+    - Keep it short (one clause).
+    - Do NOT add therapeutic interpretation.
+    - Do NOT add emotional analysis.
+    - The acknowledgement must NEVER reduce, skip, soften, or replace the DBT step instructions.
+- After the acknowledgement, present the FINAL STEP instructions exactly as written.
+    - You MUST use the shortest, most actionable version of the DBT FINAL STEP instructions.
+    - Do NOT use extended, descriptive, or multi-paragraph versions of the step.
+    - If the DBT step is naturally brief and self-explanatory (e.g., TIPP steps), use the shortest actionable version.
+    - If the DBT step requires context to be meaningful (e.g., IMPROVE steps such as Prayer, Meaning, Imagery), include the minimal additional detail needed for clarity while staying faithful to the DBT website.
+    - Do NOT paraphrase or reinterpret the step.
+    - Do NOT expand beyond what the DBT website provides.
+    - Do NOT merge the instructions with any reflection or question.
+    - You MUST output the FINAL STEP instructions even if the user reports feeling calm, steady, or improved.
+- After presenting the step, ask the user:
+    "How do you feel now?"
 - Do NOT introduce another exercise.
 - Do NOT provide another step.
-- Do NOT ask the user to continue.
-- Do NOT ask for additional reflection.
-- Keep the response to 1–2 sentences.
+- Do NOT end the exercise early.
+- Do NOT summarise the exercise.
+- Do NOT praise completion.
+- Do NOT provide closure — the closure will be handled separately.
+- Keep the entire response to 2–3 sentences maximum.
 
-Return ONLY the closing message.
+Return ONLY:
+1. A personalised acknowledgement clause.
+2. The exact DBT FINAL STEP instructions.
+3. The question: "How do you feel now?"
 """.trimIndent()
+
 
             val response = client.chatCompletion(
                 ChatCompletionRequest(
@@ -628,25 +642,35 @@ USER INPUT:
 "$userInput"
 
 STRICT RULES:
-- Your top priority is to follow the DBT Self Help website step EXACTLY.
-- You may include ONE short acknowledgement of the user's message (e.g., “Thanks for sharing that”).
-- After the acknowledgement, you MUST present the CURRENT STEP exactly as written in the DBT website.
-- Do NOT modify, shorten, expand, reinterpret, or paraphrase the step instructions.
-- Do NOT add reflections, follow-up questions, or additional actions.
-- Do NOT add supportive commentary beyond the single acknowledgement clause.
-- Do NOT describe the step; you must provide the actual instructions.
-- Do NOT invent new DBT content.
+- Your top priority is to present the DBT Self Help step EXACTLY as written.
+- Begin with ONE personalised acknowledgement based directly on the user's message.
+    - Keep it short (one clause).
+    - Do NOT add therapeutic interpretation.
+    - Do NOT add emotional analysis.
+    - The acknowledgement must NEVER reduce, skip, soften, or replace the DBT step instructions.
+- After the acknowledgement, present the CURRENT STEP instructions exactly as written.
+    - You MUST use the shortest, most actionable version of the DBT step instructions.
+    - Do NOT use extended, descriptive, or multi-paragraph versions of the step.
+    - If the DBT step is naturally brief and self-explanatory (e.g., TIPP steps), use the shortest actionable version.
+    - If the DBT step requires context to be meaningful (e.g., IMPROVE steps such as Prayer, Meaning, Imagery), include the minimal additional detail needed for clarity while staying faithful to the DBT website.
+    - Do NOT paraphrase or reinterpret the step.
+    - Do NOT expand beyond what the DBT website provides.
+    - Do NOT merge the instructions with any reflection or question.
+    - You MUST output the CURRENT STEP instructions even if the user reports feeling calm, steady, or improved.
+- After presenting the step, ask the user:
+    "How do you feel now?"
+- This question must be neutral and must NOT influence the exercise flow.
 - Do NOT mention remaining steps.
 - Do NOT switch exercises.
 - Do NOT end the exercise early.
-- Keep the response to 1–2 sentences ONLY if the DBT step itself is 1–2 sentences.
-- Otherwise, return the step exactly as written.
+- Do NOT conclude the exercise, summarise progress, or praise completion unless you are in the FINAL STEP block.
+- Keep the entire response to 2–3 sentences maximum.
 
 Return ONLY:
-1. A brief acknowledgement clause (optional).
-2. The exact DBT step instructions, unchanged.
+1. A personalised acknowledgement clause.
+2. The exact DBT step instructions.
+3. The question: "How do you feel now?"
 """.trimIndent()
-
 
         val response = client.chatCompletion(
             ChatCompletionRequest(
