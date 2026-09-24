@@ -1247,6 +1247,95 @@ You completed a $therapyType-based exercise today, and a follow-up session will 
                         return@launch
                     }
 
+                    // -----------------------------------------------------
+                    // USER REQUESTS TO CONTINUE THE PAUSED EXERCISE
+                    // -----------------------------------------------------
+                    if (deepManager.phase == DeepPhase.EXERCISE_GUIDANCE &&
+                        intent == "WILLINGNESS_CONTINUE") {
+
+                        Log.d("EXERCISE_FLOW", "User wants to continue the paused exercise")
+
+                        // Simply continue to the next step
+                        val advanced = deepManager.advanceExerciseStep()
+
+                        if (!advanced) {
+                            Log.e("EXERCISE_FLOW", "❌ Failed to advance step during willingness continue")
+                            return@launch
+                        }
+
+                        val nextStepIndex = deepManager.currentExerciseStep
+
+                        val nextStep = withContext(Dispatchers.IO) {
+                            deepManager.generateExerciseStep(
+                                exerciseName = deepManager.currentExerciseName!!,
+                                userInput = userMessage,
+                                disorder = lastDiagnosis ?: "general_distress",
+                                symptoms = symptomEngine.getSymptoms(),
+                                steps = deepManager.currentExerciseSteps,
+                                stepIndex = nextStepIndex,
+                                client = client
+                            )
+                        }
+
+                        addMessage(nextStep, false)
+                        return@launch
+                    }
+
+                    // -----------------------------------------------------
+                    // USER REQUESTS TO SWITCH EXERCISES
+                    // -----------------------------------------------------
+                    if (deepManager.phase == DeepPhase.EXERCISE_GUIDANCE &&
+                        intent == "SWITCH_EXERCISE") {
+
+                        Log.d("EXERCISE_FLOW", "User wants to switch exercises")
+
+                        deepManager.endExercise()
+                        deepManager.phase = DeepPhase.THERAPY_EXERCISES
+                        deepManager.waitingForAnotherExercise = false   // ⭐ important
+
+                        val remainingExercises = deepManager.remainingExercises()
+
+                        if (remainingExercises.isEmpty()) {
+                            addMessage("You've completed all exercises. Would you like to finish the session?", false)
+                            deepManager.waitingForAnotherExercise = true
+                            return@launch
+                        }
+
+                        val exerciseMessage = buildString {
+                            append("Sure — here are the other exercises you can try:\n\n")
+                            remainingExercises.forEachIndexed { index, exercise ->
+                                append("${index + 1}. ${exercise.name}\n")
+                                append("${exercise.description}\n\n")
+                            }
+                            append("Choose one you'd like to try.")
+                        }
+
+                        addMessage(exerciseMessage, false)
+                        return@launch
+                    }
+
+
+                    // -----------------------------------------------------
+                    // USER REQUESTS TO STOP THE CURRENT EXERCISE
+                    // -----------------------------------------------------
+                    if (deepManager.phase == DeepPhase.EXERCISE_GUIDANCE &&
+                        intent == "STOP_EXERCISE") {
+
+                        Log.d("EXERCISE_FLOW", "User wants to stop the exercise")
+
+                        addMessage("Okay — we can stop this exercise here.", false)
+
+                        deepManager.endExercise()
+                        deepManager.phase = DeepPhase.THERAPY_EXERCISES
+                        deepManager.waitingForAnotherExercise = true
+
+                        addMessage("Would you like to try another exercise, or finish the session?", false)
+                        return@launch
+                    }
+
+
+
+
 // -----------------------------------------------------
 // ANOTHER EXERCISE? — AFTER COMPLETION
 // -----------------------------------------------------
@@ -2337,7 +2426,6 @@ REQUIREMENTS
                             return@launch
                         }
 
-
                         DeepPhase.EXERCISE_GUIDANCE -> {
 
                             // Guard: exercises must have been delivered
@@ -2405,6 +2493,27 @@ REQUIREMENTS
                                         "steps=${steps.joinToString()}, " +
                                         "stepIndex=$stepIndex"
                             )
+                            // -----------------------------------------------------
+                            // FAIL CASE CHECK (NEW)
+                            // -----------------------------------------------------
+                            try {
+                                val mood = MoodEvaluator.evaluate(userMessage)
+
+                                val stopped = FailCaseController.handleFailCase(
+                                    mood = mood,
+                                    addMessage = { msg -> addMessage(msg, false) },
+                                    deepManager = deepManager
+                                )
+
+                                if (stopped) {
+                                    Log.d("EXERCISE_FLOW", "Fail-case triggered → stopping exercise flow.")
+                                    return@launch
+                                }
+
+                            } catch (e: Exception) {
+                                Log.e("EXERCISE_FLOW", "Fail-case evaluator error", e)
+                            }
+
 
                             // -----------------------------------------------------
                             // COMPLETION CHECK
@@ -2425,6 +2534,7 @@ REQUIREMENTS
                                         "totalSteps=${steps.size}, " +
                                         "isComplete=$isComplete"
                             )
+
 
                             // -----------------------------------------------------
                             // FINAL STEP → CLOSE EXERCISE
@@ -2502,6 +2612,8 @@ REQUIREMENTS
 
                                 return@launch
                             }
+
+
 
                             // -----------------------------------------------------
                             // NOT FINAL → ADVANCE TO NEXT STEP
@@ -3511,19 +3623,45 @@ You only adapt tone and content to the current phase.
         if (phase == DeepPhase.EXERCISE_GUIDANCE) {
             val lower = userMessage.lowercase()
 
+            // User wants to stop the exercise
             if (
                 lower.contains("stop") ||
-                lower.contains("done") ||
-                lower.contains("finished") ||
                 lower.contains("end") ||
+                lower.contains("finished") ||
                 lower.contains("that's enough") ||
                 lower.contains("end this")
             ) {
-                return "FINISHED_EXERCISES"
+                return "STOP_EXERCISE"
             }
 
+            // User wants to switch exercises
+            if (
+                lower.contains("switch") ||
+                lower.contains("different exercise") ||
+                lower.contains("another exercise") ||
+                lower.contains("try something else") ||
+                lower.contains("not relevant") ||
+                lower.contains("isn't helping") ||
+                lower.contains("doesn't help")
+            ) {
+                return "SWITCH_EXERCISE"
+            }
+
+            // User wants to continue after a pause
+            if (
+                lower.contains("continue") ||
+                lower.contains("carry on") ||
+                lower.contains("go ahead") ||
+                lower.contains("i'm ready") ||
+                lower.contains("ready to continue")
+            ) {
+                return "WILLINGNESS_CONTINUE"
+            }
+
+            // Default: user is responding to the exercise step
             return "EXERCISE_STEP"
         }
+
 
         // ⭐ NORMAL CLASSIFIER LOGIC BELOW ⭐
         val prompt = """

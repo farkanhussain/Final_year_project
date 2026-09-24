@@ -578,28 +578,30 @@ STRICT RULES:
     - Do NOT add therapeutic interpretation.
     - Do NOT add emotional analysis.
     - The acknowledgement must NEVER reduce, skip, soften, or replace the DBT step instructions.
-- After the acknowledgement, present the FINAL STEP instructions exactly as written.
-    - You MUST use the shortest, most actionable version of the DBT FINAL STEP instructions.
-    - Do NOT use extended, descriptive, or multi-paragraph versions of the step.
-    - If the DBT step is naturally brief and self-explanatory (e.g., TIPP steps), use the shortest actionable version.
-    - If the DBT step requires context to be meaningful (e.g., IMPROVE steps such as Prayer, Meaning, Imagery), include the minimal additional detail needed for clarity while staying faithful to the DBT website.
-    - Do NOT paraphrase or reinterpret the step.
-    - Do NOT expand beyond what the DBT website provides.
-    - Do NOT merge the instructions with any reflection or question.
+
+- After the acknowledgement, present the FINAL STEP instructions.
+    - You MUST stay faithful to the DBT Self Help website wording.
+    - You MAY add **one short clarifying sentence** that explains *how* to perform the step.
+    - You MAY add **one short grounding cue** (e.g., “take a slow breath”, “notice your posture”) ONLY if it helps the user carry out the step.
+    - You MUST NOT add long explanations, multi-paragraph guidance, or reinterpret the step.
+    - You MUST NOT add future steps or mention remaining steps.
     - You MUST output the FINAL STEP instructions even if the user reports feeling calm, steady, or improved.
+
 - After presenting the step, ask the user:
     "How do you feel now?"
+
 - Do NOT introduce another exercise.
 - Do NOT provide another step.
 - Do NOT end the exercise early.
 - Do NOT summarise the exercise.
 - Do NOT praise completion.
 - Do NOT provide closure — the closure will be handled separately.
+
 - Keep the entire response to 2–3 sentences maximum.
 
 Return ONLY:
 1. A personalised acknowledgement clause.
-2. The exact DBT FINAL STEP instructions.
+2. The DBT FINAL STEP instructions + one short clarifying sentence.
 3. The question: "How do you feel now?"
 """.trimIndent()
 
@@ -642,34 +644,29 @@ USER INPUT:
 "$userInput"
 
 STRICT RULES:
-- Your top priority is to present the DBT Self Help step EXACTLY as written.
 - Begin with ONE personalised acknowledgement based directly on the user's message.
     - Keep it short (one clause).
     - Do NOT add therapeutic interpretation.
     - Do NOT add emotional analysis.
-    - The acknowledgement must NEVER reduce, skip, soften, or replace the DBT step instructions.
-- After the acknowledgement, present the CURRENT STEP instructions exactly as written.
-    - You MUST use the shortest, most actionable version of the DBT step instructions.
-    - Do NOT use extended, descriptive, or multi-paragraph versions of the step.
-    - If the DBT step is naturally brief and self-explanatory (e.g., TIPP steps), use the shortest actionable version.
-    - If the DBT step requires context to be meaningful (e.g., IMPROVE steps such as Prayer, Meaning, Imagery), include the minimal additional detail needed for clarity while staying faithful to the DBT website.
-    - Do NOT paraphrase or reinterpret the step.
-    - Do NOT expand beyond what the DBT website provides.
-    - Do NOT merge the instructions with any reflection or question.
-    - You MUST output the CURRENT STEP instructions even if the user reports feeling calm, steady, or improved.
+    - The acknowledgement must NEVER replace or soften the DBT step instructions.
+
+- After the acknowledgement, present the CURRENT STEP instructions.
+    - You MUST stay faithful to the DBT Self Help website wording.
+    - You MAY add **one short clarifying sentence** that explains *how* to perform the step.
+    - You MAY add **one short grounding cue** (e.g., “take a slow breath”, “notice your posture”) ONLY if it helps the user carry out the step.
+    - You MUST NOT add long explanations, multi-paragraph guidance, or reinterpret the step.
+    - You MUST NOT add future steps or mention remaining steps.
+
 - After presenting the step, ask the user:
     "How do you feel now?"
-- This question must be neutral and must NOT influence the exercise flow.
-- Do NOT mention remaining steps.
-- Do NOT switch exercises.
-- Do NOT end the exercise early.
-- Do NOT conclude the exercise, summarise progress, or praise completion unless you are in the FINAL STEP block.
+
 - Keep the entire response to 2–3 sentences maximum.
 
 Return ONLY:
 1. A personalised acknowledgement clause.
-2. The exact DBT step instructions.
+2. The DBT step instructions + one short clarifying sentence.
 3. The question: "How do you feel now?"
+
 """.trimIndent()
 
         val response = client.chatCompletion(
