@@ -323,31 +323,62 @@ ${symptoms.joinToString()}
 
 
     private fun parseDbtExercises(summary: String): List<DbtExercise> {
-        val blocks = summary.split("\n\n").map { it.trim() }.filter { it.isNotBlank() }
+
+        // Split blocks more safely (LLMs sometimes use single newlines)
+        val blocks = summary
+            .split(Regex("\n{2,}"))        // split on 2+ newlines
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
 
         return blocks.mapNotNull { block ->
-            val lines = block.lines().map { it.trim() }
 
-            val header = lines.firstOrNull() ?: return@mapNotNull null
+            val lines = block
+                .lines()
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+
+            if (lines.isEmpty()) return@mapNotNull null
+
+            // HEADER: "Name — Description — URL"
+            val header = lines.first()
             val parts = header.split(" — ")
 
             if (parts.size < 3) return@mapNotNull null
 
-            val name = parts[0]
-            val description = parts[1]
-            val url = parts[2]
+            val name = parts[0].trim()
+            val description = parts[1].trim()
+            val url = parts[2].trim()
 
-            // ⭐ Find the index of "STEPS:" line
-            val stepsIndex = lines.indexOfFirst { it.equals("STEPS:", ignoreCase = true) }
+            // ⭐ Robust STEPS: detection
+            val stepsIndex = lines.indexOfFirst { line ->
+                line.contains("STEPS", ignoreCase = true)
+            }
 
             val steps =
-                if (stepsIndex != -1)
+                if (stepsIndex != -1) {
+
                     lines
-                        .drop(stepsIndex + 1)          // skip "STEPS:"
-                        .filter { it.startsWith("- ") } // only step lines
-                        .map { it.removePrefix("- ").trim() }
-                else
+                        .drop(stepsIndex + 1)
+                        .takeWhile { nextLine ->
+                            // Stop when next exercise header begins
+                            !nextLine.contains(" — ")
+                        }
+                        .filter { stepLine ->
+                            // Accept multiple bullet formats
+                            stepLine.startsWith("-") ||
+                                    stepLine.startsWith("•") ||
+                                    stepLine.startsWith("*")
+                        }
+                        .map { stepLine ->
+                            stepLine
+                                .removePrefix("-")
+                                .removePrefix("•")
+                                .removePrefix("*")
+                                .trim()
+                        }
+                } else {
                     emptyList()
+                }
 
             DbtExercise(
                 name = name,
@@ -357,6 +388,7 @@ ${symptoms.joinToString()}
             )
         }
     }
+
 
 
 

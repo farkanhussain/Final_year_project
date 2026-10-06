@@ -37,7 +37,7 @@ class QuickSessionEngine(
         val result = onnxRunner.runModelA(text)
 
         // 2. Determine emotion + condition
-        val (emotion, source) = if (result.confidence >= 0.40f) {
+        val (emotion, source) = if (result.confidence >= 0.15f) {
             result.label to "ModelA"
         } else {
             semanticEmotionDetector(text) to "Fallback"
@@ -85,10 +85,15 @@ class QuickSessionEngine(
         val lower = text.lowercase()
 
         return when {
+            "sad" in lower || "sadness" in lower -> "sadness"
             "happy" in lower || "excited" in lower -> "positive"
             "angry" in lower || "mad" in lower -> "anger"
+            "anxious" in lower || "anxiety" in lower || "worried" in lower -> "anxiety"
+            "lonely" in lower || "loneliness" in lower -> "loneliness"
             "confused" in lower -> "confusion"
             "bored" in lower -> "boredom"
+            "hopeless" in lower || "hopelessness" in lower -> "hopelessness"
+            "guilty" in lower || "guilt" in lower -> "guilt"
             else -> "unknown"
         }
     }

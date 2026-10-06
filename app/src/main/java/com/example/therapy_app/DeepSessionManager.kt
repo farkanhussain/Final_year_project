@@ -1,5 +1,4 @@
 package com.example.therapy_app
-
 import android.util.Log
 import com.aallam.openai.api.chat.ChatCompletionRequest
 import com.aallam.openai.api.chat.ChatMessage
@@ -196,6 +195,46 @@ class DeepSessionManager {
     )
 
     fun reset() {
+
+        // 🚫 GUARD: Prevent accidental resets during an active deep session
+        if (generatedDbtExercises != null) {
+            Log.e(
+                "DBT_DEBUG_RESET",
+                "RESET BLOCKED — DBT exercises already loaded. " +
+                        "Reset() was called at the wrong time."
+            )
+            return
+        }
+
+        // 🚫 GUARD: Prevent reset during an active exercise
+        if (phase == DeepPhase.EXERCISE_GUIDANCE) {
+            Log.e(
+                "DBT_DEBUG_RESET",
+                "RESET BLOCKED — user is mid‑exercise. " +
+                        "Reset() must not run during EXERCISE_GUIDANCE."
+            )
+            return
+        }
+
+        // 🚫 GUARD: Prevent reset unless session is actually complete
+        if (phase != DeepPhase.SESSION_COMPLETE) {
+            Log.e(
+                "DBT_DEBUG_RESET",
+                "RESET BLOCKED — session is not complete. " +
+                        "Reset() only allowed after SESSION_COMPLETE."
+            )
+            return
+        }
+
+        // ⭐ If all guards pass → allow reset
+        Log.w("DBT_DEBUG_RESET", "RESET ALLOWED — performing full deep session reset")
+
+        Log.e(
+            "DBT_DEBUG_RESET",
+            "RESET() CALLED — wiping session state.\n" +
+                    Log.getStackTraceString(Exception("Reset trace"))
+        )
+
         // Start deep session in CONTEXT_INTAKE (new first phase)
         phase = DeepPhase.CONTEXT_INTAKE
 

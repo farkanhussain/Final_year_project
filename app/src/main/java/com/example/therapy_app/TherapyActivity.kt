@@ -22,6 +22,8 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.util.Log
+import com.example.therapy_app.utils.PerfLogger
 
 class TherapyActivity : AppCompatActivity() {
 
@@ -36,7 +38,15 @@ class TherapyActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val start = System.currentTimeMillis()
         setContentView(R.layout.activity_therapy)
+
+        window.decorView.post {
+            val loadTime = System.currentTimeMillis() - start
+            PerfLogger.log("TherapyActivity load time", loadTime)
+        }
+
+
 
         drawerLayout = findViewById(R.id.drawer_layout_therapy)
         val navView: NavigationView = findViewById(R.id.nav_view_therapy)
