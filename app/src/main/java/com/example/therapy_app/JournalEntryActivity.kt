@@ -27,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.util.Log
 import androidx.recyclerview.widget.RecyclerView
+import com.example.therapy_app.utils.PerfLogger
 import com.google.android.material.textfield.TextInputEditText
 
 
@@ -58,7 +59,14 @@ class JournalEntryActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val start= System.currentTimeMillis()
         setContentView(R.layout.activity_journal_entry)
+
+        window.decorView.post {
+            val loadTime = System.currentTimeMillis() - start
+            PerfLogger.log("JournalEntryActivity load time", loadTime)
+        }
+
 
         journalText = findViewById(R.id.journalText)
 

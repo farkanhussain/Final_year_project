@@ -24,6 +24,7 @@ import android.view.LayoutInflater
 import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import com.example.therapy_app.utils.PerfLogger
 
 
 class MainActivity : AppCompatActivity() {
@@ -56,7 +57,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val start = System.currentTimeMillis()
         setContentView(R.layout.activity_main)
+
+        window.decorView.post {
+            val loadTime = System.currentTimeMillis() - start
+            PerfLogger.log("MainActivity load time", loadTime)
+        }
+
 
         drawerLayout = findViewById(R.id.drawer_layout)
         val navView: NavigationView = findViewById(R.id.nav_view)
@@ -567,9 +575,13 @@ $sessionText
 
 
     override fun onResume() {
+        val start = System.currentTimeMillis()
         super.onResume()
 
-
+        window.decorView.post {
+            val warmStartTime = System.currentTimeMillis() - start
+            PerfLogger.log("Warm start", warmStartTime)
+        }
     }
 
 

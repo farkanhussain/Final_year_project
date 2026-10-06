@@ -52,30 +52,93 @@ class OnnxModelRunner(private val context: Context) {
     }
 
     fun runModelA(text: String): ModelAResult {
-        val input = arrayOf(arrayOf(text))
-        val tensor = OnnxTensor.createTensor(env, input)
 
+        val TAG = "ModelA_DEBUG"
+
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "Starting Model A inference")
+        Log.d(TAG, "Input text: \"$text\"")
+
+        // 1. Prepare input
+        val input = arrayOf(arrayOf(text))
+        Log.d(TAG, "Input array created")
+        Log.d(TAG, "Input shape: [${input.size}][${input[0].size}]")
+
+        val tensor = OnnxTensor.createTensor(env, input)
+        Log.d(TAG, "ONNX tensor created successfully")
+
+        // 2. Run Model A
         val result = sessionA.run(mapOf("input" to tensor))
 
-        // 1. Extract label (String array → take first element)
+        Log.d(TAG, "Model A inference completed")
+        Log.d(TAG, "Number of ONNX outputs: ${result.size()}")
+
+        // 3. Extract label
+        Log.d(TAG, "Output 0 type: ${result[0].value.javaClass}")
+
         val labelArray = result[0].value as Array<String>
         val label = labelArray[0]
 
-        // 2. Extract probability map (sequence of OnnxMap)
+        Log.d(TAG, "Predicted label: \"$label\"")
+
+        // 4. Extract probability map
+        Log.d(TAG, "Output 1 type: ${result[1].value.javaClass}")
+
         val probSequence = result[1].value as List<*>
 
-        // First element is an OnnxMap
+        Log.d(TAG, "Probability sequence size: ${probSequence.size}")
+
         val onnxMap = probSequence[0] as ai.onnxruntime.OnnxMap
 
-        // Extract underlying Java Map<String, Float>
         @Suppress("UNCHECKED_CAST")
         val probMap = onnxMap.value as Map<String, Float>
 
-        // Convert map values to a FloatArray
-        val probabilities = probMap.values.toFloatArray()
+        // 5. Log all probabilities
+        Log.d(TAG, "Probability map:")
 
-        // Find max probability
-        val maxProb = probabilities.maxOrNull() ?: 0f
+        probMap.forEach { (emotion, probability) ->
+            Log.d(TAG, "  $emotion = $probability")
+        }
+
+        // 6. Find highest probability
+        val maxEntry = probMap.maxByOrNull { it.value }
+
+        val maxLabel = maxEntry?.key ?: "UNKNOWN"
+        val maxProb = maxEntry?.value ?: 0f
+
+        Log.d(TAG, "Highest probability label: \"$maxLabel\"")
+        Log.d(TAG, "Highest probability: $maxProb")
+        Log.d(TAG, "Model output label: \"$label\"")
+
+        // 7. Compare label with highest probability
+        if (label != maxLabel) {
+            Log.w(
+                TAG,
+                "WARNING: Model label ($label) does not match highest probability label ($maxLabel)"
+            )
+        } else {
+            Log.d(TAG, "Model label matches highest probability label")
+        }
+
+        // 8. Check confidence threshold
+        val threshold = 0.15f
+
+        if (maxProb >= threshold) {
+            Log.d(
+                TAG,
+                "Confidence $maxProb >= $threshold → Model A prediction ACCEPTED"
+            )
+        } else {
+            Log.w(
+                TAG,
+                "Confidence $maxProb < $threshold → Model A prediction REJECTED, fallback will be used"
+            )
+        }
+
+        Log.d(TAG, "========================================")
+
+        // 9. Convert probabilities to FloatArray
+        val probabilities = probMap.values.toFloatArray()
 
         return ModelAResult(
             label = label,
@@ -84,11 +147,7 @@ class OnnxModelRunner(private val context: Context) {
         )
     }
 
-    data class ModelAResult(
-        val label: String,
-        val confidence: Float,
-        val probabilities: FloatArray
-    )
+    data class ModelAResult( val label: String, val confidence: Float, val probabilities: FloatArray )
 
 
     private fun loadMappedFile(filename: String): MappedByteBuffer {

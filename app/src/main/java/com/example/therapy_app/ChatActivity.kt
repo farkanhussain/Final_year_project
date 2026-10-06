@@ -38,6 +38,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import android.view.ViewGroup
 import android.widget.RadioGroup
 import android.widget.RadioButton
+import com.example.therapy_app.utils.PerfLogger
 import com.google.gson.Gson
 
 
@@ -46,15 +47,12 @@ private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
 
 class ChatActivity : AppCompatActivity() {
 
+    private var quickToDeepSeedMessage: String? = null
 
     private var latestAssessmentScores: Map<Int, Int> = emptyMap()
 
     private var latestSelectedSymptoms: List<String> = emptyList()
     private var loadedTimestamp: Long? = null
-
-
-
-
 
     private lateinit var onnxRunner: OnnxModelRunner
     private lateinit var quickSessionEngine: QuickSessionEngine
@@ -200,7 +198,14 @@ class ChatActivity : AppCompatActivity() {
             Log.w("LifecycleCheck", "🔥 deepManager not accessible yet (${e.message})")
         }
 
+        val start = System.currentTimeMillis()
+
         setContentView(R.layout.activity_chat)
+
+        window.decorView.post {
+            val loadTime = System.currentTimeMillis() - start
+            PerfLogger.log("ChatActivity load time", loadTime)
+        }
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar_chat)
         val languageSelector = findViewById<LinearLayout>(R.id.languageSelector)
@@ -232,6 +237,7 @@ class ChatActivity : AppCompatActivity() {
             token = openAiKey
         )
         onnxRunner = OnnxModelRunner(this)
+        deepManager= DeepSessionManager()
         // =====================================================
         // RESET SYMPTOM ENGINE
         // =====================================================
@@ -313,6 +319,7 @@ class ChatActivity : AppCompatActivity() {
             isFirstAiResponse = true
             sessionJustLoaded = true
             openedFromInsightsCard = false
+            quickToDeepSeedMessage = null
 
             Log.d("QuickButton", "Session flags reset")
 
@@ -346,9 +353,15 @@ class ChatActivity : AppCompatActivity() {
             // FIRST MESSAGE
             // =====================================================
             if (selectedLanguage == "ur") {
-                addMessage("بہت اچھا — ہم ایک مختصر چیک اِن کریں گے۔ آج آپ کے ذہن میں کیا چل رہا ہے؟", false)
+                addMessage(
+                    "بہت اچھا — ہم ایک مختصر چیک اِن کریں گے۔ آج آپ کیسا محسوس کر رہے ہیں؟",
+                    false
+                )
             } else {
-                addMessage("Great — we’ll do a short 5‑Minute Check‑In. What’s been on your mind today?", false)
+                addMessage(
+                    "Great — we’ll do a short 5‑Minute Check‑In. How have you been feeling today?",
+                    false
+                )
             }
         }
 
@@ -381,18 +394,12 @@ class ChatActivity : AppCompatActivity() {
             inputBar.visibility = View.VISIBLE
             recyclerView.visibility = View.VISIBLE
 
-            // =====================================================
-            // RESET CORE DEEP STATE MACHINE
-            // =====================================================
+
             deepManager = DeepSessionManager()
-            Log.d("DeepButton", "DeepSessionManager reset | deepManagerHash=${deepManager.hashCode()}")
-
-            // Start in WAITING_FOR_USER_SYMPTOMS (ensure resetConversation sets phase)
-            deepManager.reset()
-            Log.d("DeepButton", "After resetConversation | phase=${deepManager.phase} | contextEmotion=${deepManager.contextEmotion} | contextCause=${deepManager.contextCause} | selectedQuestionnaire=${deepManager.selectedQuestionnaire?.name ?: "null"}")
-
             // === ESSENTIAL STARTUP LOG (added) ===
             Log.i("DeepButton", "deepManager created | hash=${deepManager.hashCode()} | phase=${deepManager.phase}")
+            deepManager.phase = DeepPhase.CONTEXT_INTAKE
+            Log.i("DeepButton", "deepManager forced to CONTEXT_INTAKE | phase=${deepManager.phase}")
 
 
 
@@ -772,16 +779,20 @@ class ChatActivity : AppCompatActivity() {
     }
 
 
-
-
+    
     // ---------------------------------------------------------
     // PROCESS USER MESSAGE (Soft + Optional Symptom Flow)
     // ---------------------------------------------------------
     private fun processUserMessage(userMessage: String) {
 
         // Top of processUserMessage coroutine
-        Log.d("ProcessUserMessage", "ENTER handler | userMessage='${userMessage.take(200)}' | deepManagerPhase=${deepManager.phase}")
-
+        Log.d(
+            "ProcessUserMessage",
+            "ENTER handler | userMessage='${userMessage.take(200)}' | " +
+                    "deepManagerPhase=${
+                        if (::deepManager.isInitialized) deepManager.phase else "NOT_INITIALIZED"
+                    }"
+        )
 
         Log.d("LifecycleCheck", "🟦 processUserMessage() called")
         Log.d("LifecycleCheck", "Activity instance hash = ${this.hashCode()}")
@@ -840,6 +851,7 @@ class ChatActivity : AppCompatActivity() {
                 return
             }
 
+
             // ============================================
             // QUICK SESSION MODE
             // ============================================
@@ -847,10 +859,102 @@ class ChatActivity : AppCompatActivity() {
 
                 Log.e("ENTRY_CHECK", "🔵 QUICK MODE block ENTERED in processUserMessage()")
 
+
+                if (isDeepSessionAcceptance(userMessage)) {
+
+                    deepManager = DeepSessionManager()
+                    deepManager.phase = DeepPhase.CONTEXT_INTAKE
+
+                    sessionMode = "deep"
+                    sessionStatus = "NEW"
+
+                    val seedMessage = quickToDeepSeedMessage
+
+                    Log.d(
+                        "QuickToDeep",
+                        "Transition accepted | seedMessage='$seedMessage'"
+                    )
+
+                    if (!seedMessage.isNullOrBlank()) {
+
+                        processUserMessage(seedMessage)
+
+                    } else {
+
+                        addMessage(
+                            "I'm here with you. What’s been troubling you lately?",
+                            false
+                        )
+                    }
+
+                    return
+                }
+
+                val lowerMessage = userMessage.lowercase().trim()
+
+                val quickClosurePhrases = listOf(
+                    "i feel better",
+                    "i'm feeling better",
+                    "i am feeling better",
+                    "i feel much better",
+                    "i'm much better",
+                    "i am much better",
+                    "i feel calmer",
+                    "i'm feeling calmer",
+                    "i am feeling calmer",
+                    "i feel okay now",
+                    "i'm okay now",
+                    "i am okay now",
+                    "i feel good now",
+                    "i'm good now",
+                    "i am good now",
+                    "i'm feeling good",
+                    "i am feeling good",
+                    "that's helped",
+                    "that helped",
+                    "i feel more relaxed",
+                    "i'm more relaxed",
+                    "i am more relaxed",
+                    "i'm alright now",
+                    "i am alright now"
+                )
+
+                val isQuickClosure = quickClosurePhrases.any { phrase ->
+                    lowerMessage.contains(phrase)
+                }
+
+
+                // ============================================
+                // QUICK SESSION CLOSURE
+                // ============================================
+                if (isQuickClosure) {
+
+                    Log.e("ENTRY_CHECK", "🟢 QUICK SESSION CLOSURE DETECTED")
+
+                    addMessage(
+                        """
+            I'm glad to hear you're feeling a little better. You did a great job taking a moment to focus on yourself today.
+
+            Take care of yourself, and remember that you can return for another check-in whenever you need support.
+            """.trimIndent(),
+                        isUser = false
+                    )
+
+                    sessionStatus = "completed"
+
+                    return
+                }
+
+                // ============================================
+                // NORMAL QUICK SESSION PROCESSING
+                // ============================================
                 lifecycleScope.launch {
 
                     try {
-                        Log.e("ENTRY_CHECK", "🔵 Calling quickSessionEngine.processQuickSessionMessage()...")
+                        Log.e(
+                            "ENTRY_CHECK",
+                            "🔵 Calling quickSessionEngine.processQuickSessionMessage()..."
+                        )
 
                         val quickResult =
                             quickSessionEngine.processQuickSessionMessage(userMessage)
@@ -866,6 +970,13 @@ class ChatActivity : AppCompatActivity() {
                         )
 
                         Log.e("ENTRY_CHECK", "🟢 Calling sendToAI() for QUICK mode...")
+
+                        quickToDeepSeedMessage = userMessage
+
+                        Log.d(
+                            "QuickToDeep",
+                            "Stored seed message: '$quickToDeepSeedMessage'"
+                        )
 
                         sendToAI(
                             userMessage = userMessage,
@@ -890,6 +1001,8 @@ class ChatActivity : AppCompatActivity() {
 
                 return
             }
+
+
 
             // =====================================================
             // DEEP MODE ONLY
@@ -3036,15 +3149,16 @@ TASK:
         // ---------------------------------------------------------
         // QUICK SESSION PROMPT
         // ---------------------------------------------------------
+
         val quickPrompt = """
 [ROLE]
-You are a supportive assistant for a 5‑minute emotional check‑in.
+You are a supportive assistant for a 5-minute emotional check-in.
 
 [CONTEXT]
 - Mode: QUICK
 - Respond ONLY to the latest user message.
 - Ignore all previous conversation history.
-- No questions.
+- No questions unless explicitly instructed below.
 - No symptom collection.
 - No CBT phases.
 - Keep responses short, warm, and emotionally attuned.
@@ -3064,24 +3178,54 @@ $exercisesText
 ────────────────────────────────────────
 SAFETY CHECK
 ────────────────────────────────────────
-If the user expresses suicide, self‑harm, intent to harm others, or extreme hopelessness:
+If the user expresses suicide, self-harm, intent to harm others, or extreme hopelessness:
 Respond with empathy, grounding, and encourage reaching out to someone they trust or a professional.
-Do not continue the Quick Session structure.
+Do not continue the normal Quick Session structure.
 
 ────────────────────────────────────────
-RESPONSE FORMAT
+QUICK SESSION CLOSURE
 ────────────────────────────────────────
-If emotional content is present:
-1) Brief emotional interpretation  
-2) ONE simple, supportive exercise (from the list above)  
-3) Warm closing  
-4) Invitation to begin a Deep Support Session  
+If the user indicates that they feel better, calmer, more relaxed, refreshed, okay, or that the exercise helped:
 
-If no emotional content:
+- Acknowledge their improvement warmly.
+- Do NOT provide another exercise.
+- Do NOT ask a question.
+- Do NOT ask them to describe their feelings further.
+- Do NOT start or transition into a Deep Support Session.
+- Give a brief encouraging closing message.
+- Make it clear that the Quick Session can end here.
+
+Example:
+"I'm glad to hear you're feeling a little better. You did a great job taking a moment to focus on yourself today. Take care of yourself, and remember that you can return for another check-in whenever you need support."
+
+────────────────────────────────────────
+NORMAL QUICK SESSION RESPONSE
+────────────────────────────────────────
+If emotional content is present and the user has NOT indicated that they feel better:
+
+1) Brief emotional interpretation.
+2) ONE simple, supportive exercise from the recommended list.
+3) A mandatory invitation to begin a Deep Support Session.
+4) A warm closing.
+
+The Deep Support Session invitation MUST be included in every normal Quick Session response.
+
+The invitation should be brief and supportive, for example:
+"If you'd like to explore this more deeply, you can begin a Deep Support Session."
+
+Do NOT make the Deep Support Session invitation optional.
+
+Do NOT provide multiple exercises.
+
+────────────────────────────────────────
+NO EMOTIONAL CONTENT
+────────────────────────────────────────
+If there is no emotional content and the user has not indicated that they feel better:
+
 Respond with exactly:
 "I'm here with you. Could you share a bit about what you're feeling right now."
-
 """.trimIndent()
+
 
 
         // ---------------------------------------------------------
@@ -3303,6 +3447,8 @@ You only adapt tone and content to the current phase.
 
                 Log.e("AI_DEBUG", "Calling OpenAI API...")
 
+                val start = System.currentTimeMillis()
+
                 val response = client.chatCompletion(
                     ChatCompletionRequest(
                         model = ModelId("gpt-4o-mini"),
@@ -3310,6 +3456,10 @@ You only adapt tone and content to the current phase.
                         temperature = 0.7
                     )
                 )
+
+                val end = System.currentTimeMillis()
+                val latency = end - start
+                PerfLogger.log("Chatbot latency", latency)
 
                 Log.e("AI_DEBUG", "OpenAI API returned successfully")
 
@@ -3667,7 +3817,7 @@ You only adapt tone and content to the current phase.
         val prompt = """
 Classify the user's message into one category. Follow these rules carefully.
 
-CURRENT PHASE: $phase
+CURRENT PHASE: ${'$'}phase
 
 ────────────────────────────────────────
 PHASE: QUESTIONNAIRE
@@ -3708,6 +3858,13 @@ PHASE: SESSION_ENDING
 PHASE: NEUTRAL
 ────────────────────────────────────────
 8. ACKNOWLEDGEMENT — neutral confirmation.
+
+Examples:
+- okay
+- thanks
+- understood
+- got it
+- alright
 
 ────────────────────────────────────────
 PHASE: OTHER
@@ -4111,8 +4268,26 @@ User response: "$userMessage"
         return "yes" in t || "yeah" in t || "yep" in t
     }
 
+    private fun isDeepSessionAcceptance(message: String): Boolean {
 
+        val lower = message.lowercase().trim()
 
+        return listOf(
+            "yes",
+            "sure",
+            "okay",
+            "ok",
+            "go ahead",
+            "let's do it",
+            "lets do it",
+            "start deep session",
+            "begin deep session",
+            "i want deeper support",
+            "i'd like to explore this more"
+        ).any {
+            lower.contains(it)
+        }
+    }
 
 
     private fun normalizeName(s: String): String =
