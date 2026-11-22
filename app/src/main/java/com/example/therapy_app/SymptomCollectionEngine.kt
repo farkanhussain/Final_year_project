@@ -237,33 +237,28 @@ class SymptomCollectionEngine(
     }
 
     fun getDiagnosisEvidence(): DiagnosisEvidence {
-        val phqScore = computePhq9Score()
-        val gadScore = computeGad7Score()
+    // Uses the deep-model predictions already stored by updatePhq9Prediction()
+    // and updateGad7Prediction().
+    return DiagnosisEvidence(
+        phq9Score = phq9Pred,
+        phq9Severity = phq9Severity(),
+        gad7Score = gad7Pred,
+        gad7Severity = gad7Severity(),
 
-        phq9Pred = phqScore.toFloat()
-        gad7Pred = gadScore.toFloat()
+        acchaHopeless = emo_1,
+        acchaOverwhelmed = emo_2,
+        acchaExhausted = emo_3,
+        acchaSad = emo_4,
+        acchaFunctionalImpairment = emo_5,
+        acchaSuicidalThoughts = emo_6,
+        acchaSuicideAttempts = emo_7,
 
-        return DiagnosisEvidence(
-            phq9Score = phq9Pred,
-            phq9Severity = phq9Severity(),
-            gad7Score = gad7Pred,
-            gad7Severity = gad7Severity(),
-
-            acchaHopeless = emo_1,
-            acchaOverwhelmed = emo_2,
-            acchaExhausted = emo_3,
-            acchaSad = emo_4,
-            acchaFunctionalImpairment = emo_5,
-            acchaSuicidalThoughts = emo_6,
-            acchaSuicideAttempts = emo_7,
-
-            acchaDiagnosed = acha_depression == 1f,
-            acchaDiagnosed12Months = acha_services_1 == 1f,
-            acchaTherapy = acha_services_2 == 1f,
-            acchaMedication = acha_services_3 == 1f
-        )
-    }
-
+        acchaDiagnosed = acha_depression == 1f,
+        acchaDiagnosed12Months = acha_services_1 == 1f,
+        acchaTherapy = acha_services_2 == 1f,
+        acchaMedication = acha_services_3 == 1f
+    )
+}
 
 
     // -----------------------------------------------------
